@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MAF Interactive Alignment Viewer</title>
+    <style>
+        body { font-family: sans-serif; }
+        .plot-container { width: 80vw; height: 80vh; margin: auto; }
+        #main-view-container, #detail-view-container { display: none; }
+        .action-button { margin: 10px; padding: 8px 12px; cursor: pointer; }
+        #sequence-container {
+            margin: 10px 5%;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            font-family: monospace;
+            font-size: 1.1em;
+        }
+        #tooltip {
+            position: absolute;
+            display: none;
+            padding: 8px;
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            border-radius: 4px;
+            font-size: 0.9em;
+            pointer-events: none; /* Prevents the tooltip from interfering with mouse events */
+            z-index: 100;
+        }
+        #file-selection-container { padding: 20px; border: 1px solid #ccc; margin: 20px; }
+        #main-content { display: none; }
+        .file-input-group { margin-bottom: 10px; }
+        .file-input-group label { display: inline-block; width: 150px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+
+    <div id="file-selection-container">
+        <h2>Select Input Files</h2>
+        <div class="file-input-group">
+            <label for="maf-file">MAF-TAB File:</label>
+            <input type="file" id="maf-file" accept=".maf,.txt,.tab,.tsv">
+        </div>
+        <div class="file-input-group">
+            <label for="fasta-file">FASTA File:</label>
+            <input type="file" id="fasta-file" accept=".fa,.fasta">
+        </div>
+        <div class="file-input-group">
+            <label for="bed-file">Telomere BED File:</label>
+            <input type="file" id="bed-file" accept=".bed">
+        </div>
+        <button id="load-data-button" class="action-button">Load Data</button>
+    </div>
+
+    <div id="main-content">
+        <div id="sequence-container">
+          <span id="path-number">Path (1)</span>: 
+          <span id="sequence-display">Global</span>
+        </div>
+
+        <div id="main-view-container">
+            <button id="export-paths-button-global" class="action-button export-paths-btn">Export Paths</button>
+            <h1 id="main-title"></h1>
+            <div id="main-plot" class="plot-container"></div>
+        </div>
+        <div id="detail-view-container">
+            <button id="back-button" class="action-button">&larr; Back</button>
+            <button id="back-to-global-button" class="action-button">Back to Global</button>
+            <button id="export-paths-button-detail" class="action-button export-paths-btn">Export Paths</button>
+            <h1 id="detail-title"></h1>
+            <div id="detail-plot" class="plot-container"></div>
+        </div>
+    </div>
+
+    <div id="tooltip"></div>
+    <script type="module" src="main.js" defer></script>
+</body>
+</html>
