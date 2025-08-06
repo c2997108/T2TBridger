@@ -9,17 +9,22 @@ export function setRenderViewCallback(callback) {
 
 // --- Plotting Utilities ---
 
-function prepareLineTraces(data) {
+function prepareLineTraces(data, isDetail = false) {
     const traces = { fwd: {x:[],y:[], customdata:[]}, rev: {x:[],y:[], customdata:[]} };
     for (const d of data) {
         const t = d.direction === 'forward' ? traces.fwd : traces.rev;
         t.x.push(+d.x_start, +d.x_end, null);
         t.y.push(+d.y_start, +d.y_end, null);
-        t.customdata.push(d, d, null); // Add reference to original data
+        t.customdata.push(d, d, null);
     }
+
+    const markerStyle = isDetail
+        ? { size: 6, opacity: 1 } // Visible and larger markers for detail plot
+        : { size: 8, opacity: 0 }; // Invisible markers for global plot hover
+
     return [
-        { ...traces.fwd, mode: 'lines+markers', type: 'scattergl', name: 'Forward', line: { color: 'blue', width: 1.5 }, marker: { size: 8, opacity: 0 } },
-        { ...traces.rev, mode: 'lines+markers', type: 'scattergl', name: 'Reverse', line: { color: 'red', width: 1.5 }, marker: { size: 8, opacity: 0 } }
+        { ...traces.fwd, mode: 'lines+markers', type: 'scattergl', name: 'Forward', line: { color: 'blue', width: 1.5 }, marker: markerStyle },
+        { ...traces.rev, mode: 'lines+markers', type: 'scattergl', name: 'Reverse', line: { color: 'red', width: 1.5 }, marker: markerStyle }
     ].map(t => ({...t, hoverinfo: 'none'}));
 }
 
@@ -173,18 +178,25 @@ export async function renderGlobalPlot() {
     
     await Plotly.newPlot(config.mainPlotDiv, plotTraces, layout, { responsive: true, scrollZoom: true });
     
-    config.mainPlotDiv.on('plotly_click', (e) => {
-        if (!e.points || e.points.length === 0) return;
+    // Replace all old listeners with simple standard JS listeners
+    config.mainPlotDiv.onclick = (e) => {
+        if (!config.mainPlotDiv._fullLayout) return;
 
-        const clickedContig = findContigByLocalPos(e.points[0].y, initialPlotContigArray);
+        const yaxis = config.mainPlotDiv._fullLayout.yaxis;
+        const plotRect = config.mainPlotDiv.querySelector('.nsewdrag').getBoundingClientRect();
+        const mouseY = e.clientY - plotRect.top;
+
+        if (mouseY < 0 || mouseY > plotRect.height) return;
+
+        const yData = yaxis.p2l(mouseY);
+        const clickedContig = findContigByLocalPos(yData, initialPlotContigArray);
+
         if (clickedContig) {
-            // --- Prevent re-visiting contigs in completed paths ---
             const allVisitedInPaths = new Set(config.pathHistory.flatMap(p => p.slice(1).map(item => item.contigName)));
             if (allVisitedInPaths.has(clickedContig.name)) {
                 alert(`Error: Contig ${clickedContig.name} has already been visited in a completed path.`);
                 return;
             }
-            // --- End of check ---
 
             let hasLowerTelomere = false;
             const lowerTelomereThreshold = clickedContig.length / 2;
@@ -198,33 +210,53 @@ export async function renderGlobalPlot() {
             }
             config.setYAxisReversed(!hasLowerTelomere);
 
-            const cursorPoint = { x: e.points[0].x, y: e.points[0].y };
-            let minDistSq = Infinity;
-            let closestSegment = null;
-
-            const candidateSegments = [...new Set(e.points.map(p => p.customdata))];
-            for (const segment of candidateSegments) {
-                if (!segment) continue;
-                const p1 = { x: segment.x_start, y: segment.y_start };
-                const p2 = { x: segment.x_end, y: segment.y_end };
-                const dSq = distToSegmentSquared(cursorPoint, p1, p2);
-                if (dSq < minDistSq) {
-                    minDistSq = dSq;
-                    closestSegment = segment;
-                }
-            }
+            const dummyAlignment = {
+                source: { name: clickedContig.name, start: 0, end: 1, isReversed: false },
+                target: { name: clickedContig.name, start: 0, end: 1, strand: '+' }
+            };
 
             config.pushToViewStack({
                 contigName: clickedContig.name,
-                entryAlignment: closestSegment ? {
-                    source: { name: closestSegment.q_name, start: closestSegment.q_start_orig, end: closestSegment.q_start_orig + closestSegment.aln_len, isReversed: closestSegment.isReversed },
-                    target: { name: closestSegment.t_name, start: closestSegment.t_start_orig, end: closestSegment.t_start_orig + closestSegment.aln_len, strand: closestSegment.strand }
-                } : null,
+                entryAlignment: dummyAlignment,
                 isReversed: config.yAxisReversed
             });
             renderViewCallback();
         }
-    });
+    };
+
+    config.mainPlotDiv.onmousemove = (e) => {
+        if (!config.mainPlotDiv._fullLayout) return;
+
+        const xaxis = config.mainPlotDiv._fullLayout.xaxis;
+        const yaxis = config.mainPlotDiv._fullLayout.yaxis;
+        const plotRect = config.mainPlotDiv.querySelector('.nsewdrag').getBoundingClientRect();
+
+        const mouseX = e.clientX - plotRect.left;
+        const mouseY = e.clientY - plotRect.top;
+
+        if (mouseX >= 0 && mouseX <= plotRect.width && mouseY >= 0 && mouseY <= plotRect.height) {
+            const xData = xaxis.p2l(mouseX);
+            const yData = yaxis.p2l(mouseY);
+
+            const xContig = findContigByLocalPos(xData, initialPlotContigArray);
+            const yContig = findContigByLocalPos(yData, initialPlotContigArray);
+
+            if (xContig && yContig) {
+                config.tooltip.innerHTML = `X: ${xContig.name}<br>Y: ${yContig.name}`;
+                config.tooltip.style.left = `${e.clientX + 15}px`;
+                config.tooltip.style.top = `${e.clientY + 15}px`;
+                config.tooltip.style.display = 'block';
+            } else {
+                config.tooltip.style.display = 'none';
+            }
+        } else {
+            config.tooltip.style.display = 'none';
+        }
+    };
+
+    config.mainPlotDiv.onmouseleave = () => {
+        config.tooltip.style.display = 'none';
+    };
 }
 
 export async function renderDetailPlot(yContigName) {
@@ -285,7 +317,7 @@ export async function renderDetailPlot(yContigName) {
         return { ...d, x_start: x_start_new, x_end: x_end_new };
     }).filter(Boolean);
 
-    const detailPlotTraces = prepareLineTraces(transformedData);
+    const detailPlotTraces = prepareLineTraces(transformedData, true);
     detailPlotTraces.push(...createTelomereDebugTracesForY(detailYContigArray));
     detailPlotTraces.push(...createTelomereDebugTracesForX(detailXContigArray));
     
@@ -350,14 +382,12 @@ export async function renderDetailPlot(yContigName) {
 
         const clickedXContig = findContigByLocalPos(e.points[0].x, detailXContigArray);
         if (clickedXContig) {
-            // --- Prevent re-visiting contigs ---
             const allVisitedInHistory = new Set(config.pathHistory.flatMap(p => p.slice(1).map(item => item.contigName)));
             const allVisitedInCurrentPath = new Set(config.viewStack.slice(1).map(item => item.contigName));
             if (allVisitedInHistory.has(clickedXContig.name) || allVisitedInCurrentPath.has(clickedXContig.name)) {
                 alert(`Error: Contig ${clickedXContig.name} has already been visited.`);
                 return;
             }
-            // --- End of check ---
 
             const cursorPoint = { x: e.points[0].x, y: e.points[0].y };
             let minDistSq = Infinity;
@@ -376,7 +406,6 @@ export async function renderDetailPlot(yContigName) {
             }
 
             if (closestSegment) {
-                // --- Path Extension Validation ---
                 if (config.viewStack.length > 1) {
                     const previousView = config.viewStack[config.viewStack.length - 2];
                     if (previousView !== 'global') {
@@ -385,22 +414,20 @@ export async function renderDetailPlot(yContigName) {
                         const newAlignmentEndOnY = closestSegment.t_start_orig + closestSegment.aln_len;
                         const currentYIsReversed = config.yAxisReversed;
 
-                        if (!currentYIsReversed) { // Y-axis is FORWARD
+                        if (!currentYIsReversed) {
                             if (previousAlignmentOnCurrentY.end > newAlignmentEndOnY) {
-                                alert("Error: Cannot move backwards along the contig.\n The end of the previous alignment is further along than the end of the newly selected one.");
+                                alert("Error: Cannot move backwards along the contig.\nThe end of the previous alignment is further along than the end of the newly selected one.");
                                 return;
                             }
-                        } else { // Y-axis is REVERSED
+                        } else {
                             if (previousAlignmentOnCurrentY.start < newAlignmentStartOnY) {
-                                alert("Error: Cannot move backwards along the contig.\n The start of the previous alignment is further along (in reverse) than the start of the newly selected one.");
+                                alert("Error: Cannot move backwards along the contig.\nThe start of the previous alignment is further along (in reverse) than the start of the newly selected one.");
                                 return;
                             }
                         }
                     }
                 }
-                // --- End Validation ---
 
-                const xContigInfo = detailXContigsMap.get(clickedXContig.name);
                 const alignmentIsForward = closestSegment.direction === 'forward';
                 const nextPlotShouldBeForward = (config.yAxisReversed === !alignmentIsForward);
                 config.setYAxisReversed(!nextPlotShouldBeForward);
@@ -451,7 +478,7 @@ export async function renderDetailPlot(yContigName) {
 
                 config.tooltip.innerHTML =
                     `<b>${closestSegment.q_name}</b> (${closestSegment.strand}): ${q_start_display.toLocaleString()} - ${q_end_display.toLocaleString()}<br>` +
-                    `<b>${closestSegment.t_name}</b>: ${closestSegment.t_start_orig.toLocaleString()} - ${t_end_orig.toLocaleString()}`;
+                    `<b>${closestSegment.t_name}</b>: ${t_end_orig.toLocaleString()} - ${closestSegment.t_start_orig.toLocaleString()}`;
                 
                 config.tooltip.style.left = `${e.event.clientX + 15}px`;
                 config.tooltip.style.top = `${e.event.clientY + 15}px`;
