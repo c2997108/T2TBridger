@@ -169,7 +169,9 @@ document.querySelectorAll('.export-paths-btn').forEach(button => {
 
 document.addEventListener('keydown', (event) => {
     const activePlotDiv = (config.viewStack.length === 0 || config.viewStack[config.viewStack.length - 1] === 'global') ? config.mainPlotDiv : config.detailPlotDiv;
-    if (!activePlotDiv.layout) return;
+    // Plotly v2 stores computed layout on _fullLayout; keep fallback for older versions
+    const computedLayout = activePlotDiv?._fullLayout || activePlotDiv?.layout;
+    if (!computedLayout) return;
 
     const key = event.key.toLowerCase();
 
@@ -179,7 +181,7 @@ document.addEventListener('keydown', (event) => {
         if (activePlotDiv === config.detailPlotDiv) {
             renderView(); 
         } else {
-            const currentYRange = activePlotDiv.layout.yaxis.range;
+            const currentYRange = computedLayout.yaxis.range;
             const newYRange = [currentYRange[1], currentYRange[0]];
             Plotly.relayout(activePlotDiv, { 'yaxis.range': newYRange });
         }
@@ -193,8 +195,8 @@ document.addEventListener('keydown', (event) => {
         event.preventDefault();
         config.tooltip.style.display = 'none';
 
-        const currentXRange = activePlotDiv.layout.xaxis.range;
-        const currentYRange = activePlotDiv.layout.yaxis.range;
+        const currentXRange = computedLayout.xaxis.range;
+        const currentYRange = computedLayout.yaxis.range;
         let newXRange = [...currentXRange];
         let newYRange = [...currentYRange];
 
