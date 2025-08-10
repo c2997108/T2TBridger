@@ -111,7 +111,7 @@ export async function renderGlobalPlot() {
     plotTraces.push(...createTelomereDebugTracesForX(initialPlotContigArray));
     
     const totalLength = currentOffset;
-    const allPreviouslyViewed = new Set(config.pathHistory.flatMap(p => p.slice(1).map(item => item.contigName)));
+    const allPreviouslyViewed = new Set(config.pathHistory.flatMap(p => p.map(item => item.contigName)));
     
     let shapes = initialPlotContigArray.flatMap(c => c.newOffset > 0 ? [
         { type: 'line', x0: c.newOffset, x1: c.newOffset, y0: 0, y1: totalLength, line: { color: 'rgba(0,0,0,0.4)', width: 1, dash: 'dot' } },
@@ -192,7 +192,7 @@ export async function renderGlobalPlot() {
         const clickedContig = findContigByLocalPos(yData, initialPlotContigArray);
 
         if (clickedContig) {
-            const allVisitedInPaths = new Set(config.pathHistory.flatMap(p => p.slice(1).map(item => item.contigName)));
+            const allVisitedInPaths = new Set(config.pathHistory.flatMap(p => p.map(item => item.contigName)));
             if (allVisitedInPaths.has(clickedContig.name)) {
                 alert(`Error: Contig ${clickedContig.name} has already been visited in a completed path.`);
                 return;
@@ -268,7 +268,21 @@ export async function renderDetailPlot(yContigName) {
     if (!yContig) { console.error("Contig not found:", yContigName); return; }
 
     const filteredData = config.allData.filter(d => d.t_name === yContigName);
+
+    // Calculate total alignment length for each X-axis contig
+    const alignmentLengthByContig = new Map();
+    for (const d of filteredData) {
+        const currentLength = alignmentLengthByContig.get(d.q_name) || 0;
+        alignmentLengthByContig.set(d.q_name, currentLength + d.aln_len);
+    }
+
+    // Get unique contig names and sort them by total alignment length (descending)
     const xContigNames = [...new Set(filteredData.map(d => d.q_name))];
+    xContigNames.sort((a, b) => {
+        const lengthA = alignmentLengthByContig.get(a) || 0;
+        const lengthB = alignmentLengthByContig.get(b) || 0;
+        return lengthB - lengthA;
+    });
 
     const reversalDecisions = new Map();
     for (const name of xContigNames) {
@@ -282,8 +296,8 @@ export async function renderDetailPlot(yContigName) {
     let currentXOffset = 0;
     for (const name of xContigNames) {
         const originalContig = config.fullContigArray.find(c => c.name === name);
-        detailXContigsMap.set(name, { 
-            ...originalContig, 
+        detailXContigsMap.set(name, {
+            ...originalContig,
             newOffset: currentXOffset,
             isReversed: reversalDecisions.get(name) || false
         });
@@ -329,9 +343,12 @@ export async function renderDetailPlot(yContigName) {
     const highlightTraceIndex = detailPlotTraces.length - 1;
 
     let detailShapes = [];
-    let detailAnnotations = []; 
+    let detailAnnotations = [];
     for (const contig of detailXContigArray) {
-        if (contig.newOffset > 0) detailShapes.push({ type: 'line', x0: contig.newOffset, x1: contig.newOffset, y0: 0, y1: yContig.length, line: { color: 'rgba(0,0,0,0.4)', width: 1, dash: 'dot' } });
+        const contigEnd = contig.newOffset + contig.length;
+        // Add thick black line at the end of each contig's region on the X-axis
+        detailShapes.push({ type: 'line', x0: contigEnd, x1: contigEnd, y0: 0, y1: yContig.length, line: { color: 'black', width: 2 } });
+
         const effectiveDirectionReversed = contig.isReversed ^ config.yAxisReversed;
         const color = effectiveDirectionReversed ? 'red' : 'black';
         const text = contig.name + (effectiveDirectionReversed ? '(-)' : '');
@@ -342,8 +359,11 @@ export async function renderDetailPlot(yContigName) {
             xanchor: 'right', textangle: -90
         });
     }
+
+    // Add a boundary line for the Y-axis contig
+    detailShapes.push({ type: 'line', x0: 0, x1: currentXOffset, y0: yContig.length, y1: yContig.length, line: { color: 'black', width: 2 } });
     
-    const allVisitedContigs = new Set(config.pathHistory.flatMap(p => p.slice(1).map(item => item.contigName)));
+    const allVisitedContigs = new Set(config.pathHistory.flatMap(p => p.map(item => item.contigName)));
     config.viewStack.slice(1).forEach(item => allVisitedContigs.add(item.contigName));
 
     for (const contig of detailXContigArray) {
@@ -382,7 +402,7 @@ export async function renderDetailPlot(yContigName) {
 
         const clickedXContig = findContigByLocalPos(e.points[0].x, detailXContigArray);
         if (clickedXContig) {
-            const allVisitedInHistory = new Set(config.pathHistory.flatMap(p => p.slice(1).map(item => item.contigName)));
+            const allVisitedInHistory = new Set(config.pathHistory.flatMap(p => p.map(item => item.contigName)));
             const allVisitedInCurrentPath = new Set(config.viewStack.slice(1).map(item => item.contigName));
             if (allVisitedInHistory.has(clickedXContig.name) || allVisitedInCurrentPath.has(clickedXContig.name)) {
                 alert(`Error: Contig ${clickedXContig.name} has already been visited.`);
@@ -451,6 +471,7 @@ export async function renderDetailPlot(yContigName) {
             const cursorPoint = { x: e.points[0].x, y: e.points[0].y };
             let minDistSq = Infinity;
             let closestSegment = null;
+            // Use the transformedData from the plot's closure, which is what is actually rendered.
             for (const segment of transformedData) {
                 const p1 = { x: segment.x_start, y: segment.y_start };
                 const p2 = { x: segment.x_end, y: segment.y_end };
@@ -466,6 +487,8 @@ export async function renderDetailPlot(yContigName) {
                     x: [[closestSegment.x_start, closestSegment.x_end]],
                     y: [[closestSegment.y_start, closestSegment.y_end]]
                 }, [highlightTraceIndex]);
+                
+                config.setHoveredSegment(closestSegment); // Store in config
                 currentlyHighlightedSegment = closestSegment;
 
                 const xContigInfo = detailXContigsMap.get(closestSegment.q_name);
@@ -478,7 +501,7 @@ export async function renderDetailPlot(yContigName) {
 
                 config.tooltip.innerHTML =
                     `<b>${closestSegment.q_name}</b> (${closestSegment.strand}): ${q_start_display.toLocaleString()} - ${q_end_display.toLocaleString()}<br>` +
-                    `<b>${closestSegment.t_name}</b>: ${t_end_orig.toLocaleString()} - ${closestSegment.t_start_orig.toLocaleString()}`;
+                    `<b>${closestSegment.t_name}</b>: ${closestSegment.t_start_orig.toLocaleString()} - ${t_end_orig.toLocaleString()}`;
                 
                 config.tooltip.style.left = `${e.event.clientX + 15}px`;
                 config.tooltip.style.top = `${e.event.clientY + 15}px`;
@@ -489,7 +512,13 @@ export async function renderDetailPlot(yContigName) {
 
     config.detailPlotDiv.on('plotly_unhover', () => {
         Plotly.restyle(config.detailPlotDiv, { x: [[]], y: [[]] }, [highlightTraceIndex]);
+        config.setHoveredSegment(null); // Clear from config
         currentlyHighlightedSegment = null;
         config.tooltip.style.display = 'none';
     });
 }
+
+// Add a global mouse move listener to update the last known mouse position
+document.addEventListener('mousemove', (event) => {
+    config.setMousePosition(event.clientX, event.clientY);
+});

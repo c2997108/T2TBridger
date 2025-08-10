@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
     <title>MAF Interactive Alignment Viewer</title>
     <style>
         body { font-family: sans-serif; }
@@ -14,6 +15,9 @@
             border: 1px solid #ccc;
             font-family: monospace;
             font-size: 1.1em;
+        }
+        #path-controls {
+            margin: 10px 5%;
         }
         #tooltip {
             position: absolute;
@@ -48,6 +52,10 @@
             <input type="file" id="fasta-file" accept=".fa,.fasta">
         </div>
         <div class="file-input-group">
+            <label for="fai-file">FASTA Index (.fai):</label>
+            <input type="file" id="fai-file" accept=".fai">
+        </div>
+        <div class="file-input-group">
             <label for="bed-file">Telomere BED File:</label>
             <input type="file" id="bed-file" accept=".bed">
         </div>
@@ -58,6 +66,11 @@
         <div id="sequence-container">
           <span id="path-number">Path (1)</span>: 
           <span id="sequence-display">Global</span>
+        </div>
+
+        <div id="path-controls" style="display: none;">
+            <select id="path-history-dropdown" style="margin-left: 10px;"></select>
+            <button id="resume-path-button" class="action-button">Resume Selected Path</button>
         </div>
 
         <div id="main-view-container">
@@ -75,6 +88,10 @@
     </div>
 
     <div id="tooltip"></div>
+    <div id="sequence-viewer" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 25%; background-color: #f8f9fa; border-top: 2px solid #dee2e6; overflow: auto; z-index: 101;">
+        <button id="close-sequence-viewer" style="position: absolute; top: 5px; right: 10px; cursor: pointer;">Close</button>
+        <div id="sequence-output" style="padding: 15px; font-family: monospace; white-space: pre-wrap;"></div>
+    </div>
     <script type="module" src="main.js" defer></script>
 </body>
 </html>

@@ -11,30 +11,48 @@ document.addEventListener('DOMContentLoaded', function() {
     const loadButton = document.getElementById('load-data-button');
     const mafFileInput = document.getElementById('maf-file');
     const fastaFileInput = document.getElementById('fasta-file');
+    const faiFileInput = document.getElementById('fai-file');
     const bedFileInput = document.getElementById('bed-file');
+    const closeSequenceViewerButton = document.getElementById('close-sequence-viewer');
 
     loadButton.addEventListener('click', () => {
         const mafFile = mafFileInput.files[0];
         const fastaFile = fastaFileInput.files[0];
+        const faiFile = faiFileInput.files[0];
         const bedFile = bedFileInput.files[0];
 
-        if (!mafFile || !fastaFile || !bedFile) {
-            alert('Please select all three input files.');
+        if (!mafFile || !fastaFile || !faiFile || !bedFile) {
+            alert('Please select all four input files.');
             return;
         }
 
         document.getElementById('file-selection-container').style.display = 'none';
         document.getElementById('main-content').style.display = 'block';
 
-        initialize(mafFile, fastaFile, bedFile).catch(console.error);
+        initialize(mafFile, fastaFile, faiFile, bedFile).catch(console.error);
+    });
+
+    closeSequenceViewerButton.addEventListener('click', () => {
+        document.getElementById('sequence-viewer').style.display = 'none';
     });
 });
 
-async function initialize(mafFile, fastaFile, bedFile) {
-    const [contigData, telomereBedText] = await Promise.all([
-        utils.parseFastaForContigInfo(fastaFile),
+async function initialize(mafFile, fastaFile, faiFile, bedFile) {
+    config.setFastaFile(fastaFile);
+    
+    const [faiText, bedFileText] = await Promise.all([
+        faiFile.text(),
         bedFile.text()
     ]);
+
+    const faiMap = utils.parseFai(faiText);
+    config.setFaiMap(faiMap);
+
+    const contigs = {};
+    for (const [name, info] of faiMap.entries()) {
+        contigs[name] = { length: info.length };
+    }
+    const contigData = { contigs };
     
     config.setAllContigInfo(contigData);
     config.setAllData(await utils.parseMafStream(mafFile, config.allContigInfo.contigs));
@@ -42,7 +60,7 @@ async function initialize(mafFile, fastaFile, bedFile) {
     const tempContigs = Object.entries(config.allContigInfo.contigs).map(([name, info]) => ({ name, ...info, hasTelomere: false, telomeres: [] }));
     const contigMap = new Map(tempContigs.map(c => [c.name, c]));
 
-    telomereBedText.split('\n').forEach(line => {
+    bedFileText.split('\n').forEach(line => {
         const parts = line.split('\t');
         if (parts.length >= 6 && (+parts[2] - +parts[1]) >= 100) {
             const contig = contigMap.get(parts[0]);
@@ -66,6 +84,7 @@ export async function renderView() {
         await renderDetailPlot(currentView.contigName);
     }
     updateSequenceDisplay();
+    updatePathHistoryDropdown();
 }
 
 export function updateSequenceDisplay() {
@@ -92,6 +111,22 @@ export function updateSequenceDisplay() {
     display.innerHTML = path;
 }
 
+function updatePathHistoryDropdown() {
+    const dropdown = document.getElementById('path-history-dropdown');
+    dropdown.innerHTML = '<option value="">Select a path to resume</option>'; // Clear existing options and add a placeholder
+
+    config.pathHistory.forEach((path, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        const pathString = path.map(p => p.contigName).join(' -> ');
+        option.textContent = `Path ${index + 1}: ${pathString}`;
+        dropdown.appendChild(option);
+    });
+
+    const hasHistory = config.pathHistory.length > 0;
+    document.getElementById('path-controls').style.display = hasHistory ? 'block' : 'none';
+}
+
 
 // --- Event Handlers ---
 
@@ -111,9 +146,48 @@ document.getElementById('back-button').addEventListener('click', () => {
 
 document.getElementById('back-to-global-button').addEventListener('click', () => {
     if (config.viewStack.length > 1) {
-        config.pushToPathHistory([...config.viewStack]);
+        // Exclude the 'global' view from the path history
+        config.pushToPathHistory(config.viewStack.slice(1));
     }
     config.clearViewStack();
+    renderView();
+});
+
+document.getElementById('resume-path-button').addEventListener('click', () => {
+    const dropdown = document.getElementById('path-history-dropdown');
+    const selectedIndex = dropdown.value;
+
+    if (selectedIndex === "") {
+        alert("Please select a path from the dropdown to resume.");
+        return;
+    }
+
+    const pathIndex = parseInt(selectedIndex, 10);
+    
+    // 1. Get the path to resume from the current history
+    const pathToResume = config.pathHistory[pathIndex];
+
+    // 2. Save the current working path (if it exists)
+    const currentPath = config.viewStack.length > 1 ? config.viewStack.slice(1) : null;
+
+    // 3. Remove the selected path from history
+    config.removePathFromHistory(pathIndex);
+
+    // 4. Add the (previously) current path to history if it was valid
+    if (currentPath) {
+        config.pushToPathHistory(currentPath);
+    }
+    
+    // 5. Set the new view stack from the resumed path
+    config.clearViewStack();
+    pathToResume.forEach(view => config.pushToViewStack(view));
+    
+    const lastView = pathToResume[pathToResume.length - 1];
+    if (lastView && typeof lastView === 'object' && lastView.hasOwnProperty('isReversed')) {
+        config.setYAxisReversed(lastView.isReversed);
+    }
+
+    // Render the resumed view
     renderView();
 });
 
@@ -121,7 +195,7 @@ document.querySelectorAll('.export-paths-btn').forEach(button => {
     button.addEventListener('click', () => {
         const allPathsToExport = [...config.pathHistory];
         if (config.viewStack.length > 1) {
-            allPathsToExport.push([...config.viewStack]);
+            allPathsToExport.push(config.viewStack.slice(1));
         }
 
         if (allPathsToExport.length === 0) {
@@ -131,8 +205,9 @@ document.querySelectorAll('.export-paths-btn').forEach(button => {
 
         let outputText = "";
         allPathsToExport.forEach((path, index) => {
-            outputText += `Path ${index + 1}:\n`;
-            path.slice(1).forEach((step, stepIndex) => {
+            outputText += `Path ${index + 1}:
+`;
+            path.forEach((step, stepIndex) => {
                 outputText += `  -> ${step.contigName}`;
                 if (step.entryAlignment) {
                     const { source, target } = step.entryAlignment;
@@ -146,7 +221,8 @@ document.querySelectorAll('.export-paths-btn').forEach(button => {
                         sourcePart = `=> `;
                     }
 
-                    outputText += ` ( ${sourcePart}${target.name} [${target.start.toLocaleString()}-${target.end.toLocaleString()}] Contig:${outputContigDirection} Alignment:${target.strand})\n`;
+                    outputText += ` ( ${sourcePart}${target.name} [${target.start.toLocaleString()}-${target.end.toLocaleString()}] Contig:${outputContigDirection} Alignment:${target.strand})
+`;
                 } else {
                     outputText += "\n";
                 }
@@ -167,9 +243,8 @@ document.querySelectorAll('.export-paths-btn').forEach(button => {
 });
 
 
-document.addEventListener('keydown', (event) => {
+document.addEventListener('keydown', async (event) => {
     const activePlotDiv = (config.viewStack.length === 0 || config.viewStack[config.viewStack.length - 1] === 'global') ? config.mainPlotDiv : config.detailPlotDiv;
-    // Plotly v2 stores computed layout on _fullLayout; keep fallback for older versions
     const computedLayout = activePlotDiv?._fullLayout || activePlotDiv?.layout;
     if (!computedLayout) return;
 
@@ -187,6 +262,53 @@ document.addEventListener('keydown', (event) => {
         }
         
         updateSequenceDisplay();
+        return;
+    }
+
+    if (key === 'f') {
+        const segment = config.hoveredSegment;
+        if (!segment) {
+            console.log("No alignment segment is currently hovered.");
+            return;
+        }
+
+        const seqViewer = document.getElementById('sequence-viewer');
+        const seqOutput = document.getElementById('sequence-output');
+        seqOutput.textContent = 'Fetching sequences...';
+        seqViewer.style.display = 'block';
+
+        try {
+            const MAX_LEN = 3000;
+            const q_len = Math.min(segment.aln_len, MAX_LEN);
+            const t_len = Math.min(segment.aln_len, MAX_LEN);
+
+            const q_start = segment.q_start_orig;
+            const q_end = segment.q_start_orig + q_len;
+            
+            const t_start = segment.t_start_orig;
+            const t_end = segment.t_start_orig + t_len;
+
+            let [q_seq, t_seq] = await Promise.all([
+                utils.fetchSequence(config.fastaFile, config.faiMap, segment.q_name, q_start, q_end),
+                utils.fetchSequence(config.fastaFile, config.faiMap, segment.t_name, t_start, t_end)
+            ]);
+
+            let q_header;
+            if (segment.strand === '-') {
+                q_seq = utils.reverseComplement(q_seq);
+                q_header = `>X-axis: ${segment.q_name}:${q_start}-${q_end} (strand ${segment.strand}, reverse complemented)`;
+            } else {
+                q_header = `>X-axis: ${segment.q_name}:${q_start}-${q_end} (strand ${segment.strand})`;
+            }
+            
+            const t_header = `>Y-axis: ${segment.t_name}:${t_start}-${t_end}`;
+            
+            seqOutput.textContent = `${q_header}\n${q_seq}\n\n${t_header}\n${t_seq}`;
+
+        } catch (error) {
+            console.error("Failed to fetch sequence:", error);
+            seqOutput.textContent = `Error: ${error.message}`;
+        }
         return;
     }
 
