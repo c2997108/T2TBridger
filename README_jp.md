@@ -11,6 +11,7 @@ hifiasm --dual-scaf -o contigs -t 16 --ont fastq/*.fastq.gz
 for i in `ls *ctg.gfa`; do awk '/^S/{print ">"$2;print $3}' $i > `basename $i .gfa`.fasta; done
 #hap1とhap2のコンティグを同一ファイルにまとめる
 cat contigs.bp.hap1.p_ctg.fasta contigs.bp.hap2.p_ctg.fasta > hap1-2.fasta
+samtools faidx hap1-2.fasta
 ```
 
 2. テロメアの座標を探索
