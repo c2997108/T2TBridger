@@ -83,6 +83,7 @@
 
         <div id="main-view-container">
             <button id="export-paths-button-global" class="action-button export-paths-btn">Export Paths</button>
+            <button id="import-paths-button-global" class="action-button import-paths-btn">Import Paths</button>
             <h1 id="main-title"></h1>
             <div id="main-plot" class="plot-container"></div>
         </div>
@@ -90,9 +91,12 @@
             <button id="back-button" class="action-button">&larr; Back</button>
             <button id="back-to-global-button" class="action-button">Back to Global</button>
             <button id="export-paths-button-detail" class="action-button export-paths-btn">Export Paths</button>
+            <button id="import-paths-button-detail" class="action-button import-paths-btn">Import Paths</button>
             <h1 id="detail-title"></h1>
             <div id="detail-plot" class="plot-container"></div>
         </div>
+        <!-- Hidden file input for importing exported paths -->
+        <input type="file" id="import-paths-input" accept=".txt,.json" style="display:none;" />
     </div>
 
     <div id="tooltip"></div>

@@ -294,6 +294,146 @@ document.querySelectorAll('.export-paths-btn').forEach(button => {
     });
 });
 
+// --- Import Paths (from exported text) ---
+function parseNumber(numStr) {
+    if (!numStr) return null;
+    return parseInt(String(numStr).replace(/,/g, ''), 10);
+}
+
+function parseExportedPaths(text) {
+    const lines = text.split(/\r?\n/);
+    const paths = [];
+    let current = null;
+
+    for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+
+        const pathHeader = line.match(/^Path\s+\d+\s*:/i);
+        if (pathHeader) {
+            if (current && current.length) paths.push(current);
+            current = [];
+            continue;
+        }
+
+        if (line.startsWith('->') || line.startsWith('➡') || line.startsWith('⇒')) {
+            // Normalize to `->` format just in case
+            const afterArrow = line.replace(/^[-➡⇒>\s]+/, '');
+
+            // Split off optional parentheses block
+            const m = afterArrow.match(/^([^()]+?)(?:\s*\((.*)\))?$/);
+            if (!m) continue;
+            const contigName = m[1].trim();
+            const meta = (m[2] || '').trim();
+
+            let isReversed = false;
+            let entryAlignment = null;
+
+            if (meta) {
+                // Extract Contig orientation and Alignment strand
+                const dirMatch = meta.match(/Contig\s*:\s*([+-])/i);
+                if (dirMatch) isReversed = dirMatch[1] === '-';
+
+                const alnMatch = meta.match(/Alignment\s*:\s*([+-])/i);
+                const alnStrand = alnMatch ? alnMatch[1] : '+';
+
+                // Extract bracketed ranges (source then target)
+                const rangeMatches = [...meta.matchAll(/\[\s*([0-9,]+)\s*-\s*([0-9,]+)\s*\]/g)];
+                let source = null;
+                let target = null;
+                let srcName = null;
+                let tgtName = null;
+
+                if (rangeMatches.length >= 1) {
+                    // Target = last pair, name = token before last pair
+                    const last = rangeMatches[rangeMatches.length - 1];
+                    target = { start: parseNumber(last[1]), end: parseNumber(last[2]), strand: alnStrand };
+                    const beforeLast = meta.slice(0, last.index).trim();
+                    // target name should be the last token there (excluding the arrow)
+                    const tokens = beforeLast.split(/\s+/).filter(t => t !== '=>' && t !== '→' && t !== '⇒');
+                    tgtName = tokens[tokens.length - 1] || contigName;
+                }
+
+                if (rangeMatches.length >= 2) {
+                    const first = rangeMatches[0];
+                    source = { start: parseNumber(first[1]), end: parseNumber(first[2]), isReversed: false };
+                    const beforeFirst = meta.slice(0, first.index).trim();
+                    const srcTokens = beforeFirst.split(/\s+/);
+                    srcName = srcTokens[srcTokens.length - 1] || null;
+                }
+
+                // Fallbacks
+                if (!tgtName) tgtName = contigName;
+                if (!source) {
+                    // Mirror dummy used from global: source equals target with tiny span
+                    source = { name: tgtName, start: 0, end: 1, isReversed: false };
+                } else {
+                    source.name = srcName || tgtName;
+                }
+                if (!target) target = { name: tgtName, start: 0, end: 1, strand: '+' };
+                else target.name = tgtName;
+
+                entryAlignment = { source, target };
+            }
+
+            current?.push({ contigName, entryAlignment, isReversed });
+        }
+    }
+    if (current && current.length) paths.push(current);
+    return paths;
+}
+
+// Wire import buttons to hidden file input
+document.querySelectorAll('.import-paths-btn').forEach(button => {
+    button.addEventListener('click', () => {
+        document.getElementById('import-paths-input').click();
+    });
+});
+
+document.getElementById('import-paths-input').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+        const text = await file.text();
+        const imported = parseExportedPaths(text);
+        if (!imported.length) {
+            alert('No paths found in the selected file.');
+            e.target.value = '';
+            return;
+        }
+
+        // Append imported paths to history
+        for (const p of imported) config.pushToPathHistory(p);
+        updatePathHistoryDropdown();
+
+        // If exactly one path imported and we are at global, offer to resume now
+        if (imported.length === 1 && config.viewStack.length <= 1) {
+            const resume = confirm('1 path imported. Resume it now?');
+            if (resume) {
+                // Move imported path from history into current view stack
+                const pathToResume = imported[0];
+                // Remove the last added path from history
+                config.removePathFromHistory(config.pathHistory.length - 1);
+                config.clearViewStack();
+                pathToResume.forEach(v => config.pushToViewStack(v));
+                const lastView = pathToResume[pathToResume.length - 1];
+                if (lastView && typeof lastView === 'object' && lastView.hasOwnProperty('isReversed')) {
+                    config.setYAxisReversed(lastView.isReversed);
+                }
+                renderView();
+            }
+        } else {
+            alert(`${imported.length} paths imported. Use the dropdown to resume.`);
+        }
+    } catch (err) {
+        console.error('Failed to import paths:', err);
+        alert(`Failed to import: ${err.message}`);
+    } finally {
+        // Reset input so the same file can be selected again if needed
+        e.target.value = '';
+    }
+});
+
 
 document.addEventListener('keydown', async (event) => {
     const activePlotDiv = (config.viewStack.length === 0 || config.viewStack[config.viewStack.length - 1] === 'global') ? config.mainPlotDiv : config.detailPlotDiv;
