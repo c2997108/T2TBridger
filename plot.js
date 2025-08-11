@@ -76,7 +76,7 @@ function createTelomereDebugTracesForX(xContigsInView) {
 export async function renderGlobalPlot() {
     document.getElementById('detail-view-container').style.display = 'none';
     document.getElementById('main-view-container').style.display = 'block';
-    document.getElementById('main-title').textContent = 'Telomere-Containing Contigs (Press "r" to reverse Y-axis)';
+    document.getElementById('main-title').textContent = 'Telomere-Containing Contigs';
 
     const telomereContigsMap = new Map();
     let currentOffset = 0;
@@ -262,7 +262,7 @@ export async function renderGlobalPlot() {
 export async function renderDetailPlot(yContigName) {
     document.getElementById('main-view-container').style.display = 'none';
     document.getElementById('detail-view-container').style.display = 'block';
-    document.getElementById('detail-title').textContent = `Alignments to ${yContigName} (Press "r" to reverse Y-axis)`;
+    document.getElementById('detail-title').textContent = `Alignments to ${yContigName}`;
 
     const yContig = config.fullContigArray.find(c => c.name === yContigName);
     if (!yContig) { console.error("Contig not found:", yContigName); return; }

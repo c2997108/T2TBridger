@@ -14,6 +14,58 @@ document.addEventListener('DOMContentLoaded', function() {
     const faiFileInput = document.getElementById('fai-file');
     const bedFileInput = document.getElementById('bed-file');
     const closeSequenceViewerButton = document.getElementById('close-sequence-viewer');
+    const toggleHelpButton = document.getElementById('toggle-help-button');
+    const helpBox = document.getElementById('keyboard-help');
+
+    // i18n: Decide language (Japanese if any locale starts with "ja")
+    const isJa = (() => {
+        const langs = navigator.languages || [navigator.language || ''];
+        return langs.some(l => (l || '').toLowerCase().startsWith('ja'));
+    })();
+
+    // Build localized help content
+    const helpTexts = isJa ? {
+        helpLabel: 'ヘルプ',
+        title: 'キーボード操作',
+        note: '注: プロット領域をアクティブにした状態（クリック後）で有効です。',
+        items: [
+            ['r', 'Y軸の向きを反転（現在のビューに適用）'],
+            ['f', 'ホバー中のアラインメント区間の配列を表示（最大3,000bp、X軸とY軸）'],
+            ['↑ / ↓', '表示を上下にパン（5%ずつ）'],
+            ['← / →', '表示を左右にパン（5%ずつ）'],
+            ['w', 'ズームイン'],
+            ['s', 'ズームアウト']
+        ]
+    } : {
+        helpLabel: 'Help',
+        title: 'Keyboard Shortcuts',
+        note: 'Note: Click the plot area to focus before using shortcuts.',
+        items: [
+            ['r', 'Reverse Y-axis orientation (applies to current view)'],
+            ['f', 'Show sequences for hovered alignment segment (up to 3,000 bp; X & Y)'],
+            ['↑ / ↓', 'Pan vertically by 5%'],
+            ['← / →', 'Pan horizontally by 5%'],
+            ['w', 'Zoom in'],
+            ['s', 'Zoom out']
+        ]
+    };
+
+    if (toggleHelpButton && helpBox) {
+        toggleHelpButton.textContent = helpTexts.helpLabel;
+        const listItems = helpTexts.items
+            .map(([k, v]) => `<li><code>${k}</code>: ${v}</li>`) 
+            .join('');
+        helpBox.innerHTML = `
+            <strong>${helpTexts.title}:</strong>
+            <ul style="margin: 8px 0 0 18px;">${listItems}</ul>
+            <div style="color:#666; margin-top:6px;">${helpTexts.note}</div>
+        `;
+
+        toggleHelpButton.addEventListener('click', () => {
+            const isHidden = helpBox.style.display === 'none' || helpBox.style.display === '';
+            helpBox.style.display = isHidden ? 'block' : 'none';
+        });
+    }
 
     loadButton.addEventListener('click', () => {
         const mafFile = mafFileInput.files[0];
