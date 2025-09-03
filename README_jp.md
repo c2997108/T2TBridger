@@ -107,3 +107,8 @@ awk -F'\t' '
  ' <(cat hap1-2.fa|awk '$0~"^>"{print $1} $0!~"^>"{print $0}'| seqkit fx2tab) hap1-2.path > hap1-2.extended.fa
 ```
 
+3. 伸長済みの配列だけを見たい場合は
+
+```
+seqkit fx2tab hap1-2.extended.fa |grep -E '^scaffold_[0-9]+'$'\t' |awk -F'\t' '{print ">"$1"\n"$2}' > hap1-2.extended_only.fa
+```
