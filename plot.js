@@ -29,25 +29,37 @@ function prepareLineTraces(data, isDetail = false) {
 }
 
 function createTelomereDebugTracesForY(yContigsInView) {
-    const plusTraceData = { x: [], y: [] }, minusTraceData = { x: [], y: [] };
+    const plusTraceData = { x: [], y: [], symbols: [] };
+    const minusTraceData = { x: [], y: [], symbols: [] };
     for (const contig of yContigsInView) {
         if (!contig.telomeres) continue;
+        const contigIsReversed = !!contig.isReversed;
         for (const telomere of contig.telomeres) {
             const y_start = telomere.start + contig.newOffset;
             const y_end = telomere.end + contig.newOffset;
             const targetTrace = telomere.strand === '+' ? plusTraceData : minusTraceData;
+            const orientationFlipped = contigIsReversed ^ config.yAxisReversed;
+            const symbol = (() => {
+                const baseUp = telomere.strand === '+';
+                if (orientationFlipped) {
+                    return baseUp ? 'triangle-down' : 'triangle-up';
+                }
+                return baseUp ? 'triangle-up' : 'triangle-down';
+            })();
             targetTrace.x.push(config.TELOMERE_DEBUG_X_POS, config.TELOMERE_DEBUG_X_POS, null);
             targetTrace.y.push(y_start, y_end, null);
+            targetTrace.symbols.push(symbol, symbol, symbol);
         }
     }
     return [
-        { x: plusTraceData.x, y: plusTraceData.y, mode: 'lines+markers', type: 'scattergl', name: 'Telomere Y (+)', line: { color: 'green', width: 5 }, marker: { color: 'green', size: 8 }, hoverinfo: 'none' },
-        { x: minusTraceData.x, y: minusTraceData.y, mode: 'lines+markers', type: 'scattergl', name: 'Telomere Y (-)', line: { color: 'yellow', width: 5 }, marker: { color: 'yellow', size: 8 }, hoverinfo: 'none' }
+        { x: plusTraceData.x, y: plusTraceData.y, mode: 'lines+markers', type: 'scattergl', name: 'Telomere Y (+)', line: { color: 'green', width: 5 }, marker: { color: 'green', size: 10, symbol: plusTraceData.symbols }, hoverinfo: 'none' },
+        { x: minusTraceData.x, y: minusTraceData.y, mode: 'lines+markers', type: 'scattergl', name: 'Telomere Y (-)', line: { color: 'yellow', width: 5 }, marker: { color: 'yellow', size: 10, symbol: minusTraceData.symbols }, hoverinfo: 'none' }
     ];
 }
 
 function createTelomereDebugTracesForX(xContigsInView) {
-    const plusTraceData = { x: [], y: [] }, minusTraceData = { x: [], y: [] };
+    const plusTraceData = { x: [], y: [], symbols: [] };
+    const minusTraceData = { x: [], y: [], symbols: [] };
     for (const contig of xContigsInView) {
         if (!contig.telomeres) continue;
         const effectiveDirectionReversed = contig.isReversed ^ config.yAxisReversed;
@@ -61,14 +73,87 @@ function createTelomereDebugTracesForX(xContigsInView) {
             const x_start = x_start_local + contig.newOffset;
             const x_end = x_end_local + contig.newOffset;
             const targetTrace = telomere.strand === '+' ? plusTraceData : minusTraceData;
+            const symbol = (() => {
+                const baseRight = telomere.strand === '+';
+                if (effectiveDirectionReversed) {
+                    return baseRight ? 'triangle-left' : 'triangle-right';
+                }
+                return baseRight ? 'triangle-right' : 'triangle-left';
+            })();
             targetTrace.x.push(x_start, x_end, null);
             targetTrace.y.push(config.TELOMERE_DEBUG_Y_POS, config.TELOMERE_DEBUG_Y_POS, null);
+            targetTrace.symbols.push(symbol, symbol, symbol);
         }
     }
     return [
-        { x: plusTraceData.x, y: plusTraceData.y, mode: 'lines+markers', type: 'scattergl', name: 'Telomere X (+)', line: { color: 'purple', width: 5 }, marker: { color: 'purple', size: 8 }, hoverinfo: 'none' },
-        { x: minusTraceData.x, y: minusTraceData.y, mode: 'lines+markers', type: 'scattergl', name: 'Telomere X (-)', line: { color: 'orange', width: 5 }, marker: { color: 'orange', size: 8 }, hoverinfo: 'none' }
+        { x: plusTraceData.x, y: plusTraceData.y, mode: 'lines+markers', type: 'scattergl', name: 'Telomere X (+)', line: { color: 'purple', width: 5 }, marker: { color: 'purple', size: 10, symbol: plusTraceData.symbols }, hoverinfo: 'none' },
+        { x: minusTraceData.x, y: minusTraceData.y, mode: 'lines+markers', type: 'scattergl', name: 'Telomere X (-)', line: { color: 'orange', width: 5 }, marker: { color: 'orange', size: 10, symbol: minusTraceData.symbols }, hoverinfo: 'none' }
     ];
+}
+
+function createGapTracesForY(yContigsInView) {
+    const traceData = { x: [], y: [] };
+    for (const contig of yContigsInView) {
+        if (!contig.gaps || contig.gaps.length === 0) continue;
+        for (const gap of contig.gaps) {
+            const gapStart = (gap.start ?? 0) + (contig.newOffset ?? 0);
+            const gapEnd = (gap.end ?? gapStart) + (contig.newOffset ?? 0);
+            console.debug('[Gap Y]', {
+                contig: contig.name,
+                displayStart: gapStart,
+                displayEnd: gapEnd,
+                originalStart: gap.start ?? gapStart,
+                originalEnd: gap.end ?? gapEnd,
+                yAxisReversed: config.yAxisReversed
+            });
+            traceData.x.push(config.GAP_DEBUG_X_POS, config.GAP_DEBUG_X_POS, null);
+            traceData.y.push(gapStart, gapEnd, null);
+        }
+    }
+    if (traceData.x.length === 0) return null;
+    return {
+        x: traceData.x,
+        y: traceData.y,
+        mode: 'lines+markers',
+        type: 'scattergl',
+        name: 'Gap Y',
+        line: { color: '#666666', width: 4 },
+        marker: { color: '#666666', size: 6, symbol: 'circle' },
+        hoverinfo: 'none'
+    };
+}
+
+function createGapTracesForX(xContigsInView) {
+    const traceData = { x: [], y: [] };
+    for (const contig of xContigsInView) {
+        if (!contig.gaps || contig.gaps.length === 0) continue;
+        const effectiveDirectionReversed = (!!contig.isReversed) ^ config.yAxisReversed;
+        for (const gap of contig.gaps) {
+            let gapStartLocal = gap.start ?? 0;
+            let gapEndLocal = gap.end ?? gapStartLocal;
+            if (effectiveDirectionReversed) {
+                const reversedStart = contig.length - gapEndLocal;
+                const reversedEnd = contig.length - gapStartLocal;
+                gapStartLocal = reversedStart;
+                gapEndLocal = reversedEnd;
+            }
+            const gapStart = gapStartLocal + (contig.newOffset ?? 0);
+            const gapEnd = gapEndLocal + (contig.newOffset ?? 0);
+            traceData.x.push(gapStart, gapEnd, null);
+            traceData.y.push(config.GAP_DEBUG_Y_POS, config.GAP_DEBUG_Y_POS, null);
+        }
+    }
+    if (traceData.x.length === 0) return null;
+    return {
+        x: traceData.x,
+        y: traceData.y,
+        mode: 'lines+markers',
+        type: 'scattergl',
+        name: 'Gap X',
+        line: { color: '#666666', width: 4 },
+        marker: { color: '#666666', size: 6, symbol: 'circle' },
+        hoverinfo: 'none'
+    };
 }
 
 // --- View Renderers ---
@@ -109,6 +194,10 @@ export async function renderGlobalPlot() {
     const plotTraces = prepareLineTraces(filteredData);
     plotTraces.push(...createTelomereDebugTracesForY(initialPlotContigArray));
     plotTraces.push(...createTelomereDebugTracesForX(initialPlotContigArray));
+    const gapTraceY = createGapTracesForY(initialPlotContigArray);
+    if (gapTraceY) plotTraces.push(gapTraceY);
+    const gapTraceX = createGapTracesForX(initialPlotContigArray);
+    if (gapTraceX) plotTraces.push(gapTraceX);
     
     const totalLength = currentOffset;
     const allPreviouslyViewed = new Set(config.pathHistory.flatMap(p => p.map(item => item.contigName)));
@@ -193,7 +282,7 @@ export async function renderGlobalPlot() {
 
         if (clickedContig) {
             const allVisitedInPaths = new Set(config.pathHistory.flatMap(p => p.map(item => item.contigName)));
-            if (allVisitedInPaths.has(clickedContig.name)) {
+            if (!config.allowRepeatSelection && allVisitedInPaths.has(clickedContig.name)) {
                 alert(`Error: Contig ${clickedContig.name} has already been visited in a completed path.`);
                 return;
             }
@@ -334,6 +423,10 @@ export async function renderDetailPlot(yContigName) {
     const detailPlotTraces = prepareLineTraces(transformedData, true);
     detailPlotTraces.push(...createTelomereDebugTracesForY(detailYContigArray));
     detailPlotTraces.push(...createTelomereDebugTracesForX(detailXContigArray));
+    const detailGapTraceY = createGapTracesForY(detailYContigArray);
+    if (detailGapTraceY) detailPlotTraces.push(detailGapTraceY);
+    const detailGapTraceX = createGapTracesForX(detailXContigArray);
+    if (detailGapTraceX) detailPlotTraces.push(detailGapTraceX);
     
     detailPlotTraces.push({
         x: [], y: [], mode: 'lines', type: 'scattergl', name: 'Highlight',
@@ -404,7 +497,7 @@ export async function renderDetailPlot(yContigName) {
         if (clickedXContig) {
             const allVisitedInHistory = new Set(config.pathHistory.flatMap(p => p.map(item => item.contigName)));
             const allVisitedInCurrentPath = new Set(config.viewStack.slice(1).map(item => item.contigName));
-            if (allVisitedInHistory.has(clickedXContig.name) || allVisitedInCurrentPath.has(clickedXContig.name)) {
+            if (!config.allowRepeatSelection && (allVisitedInHistory.has(clickedXContig.name) || allVisitedInCurrentPath.has(clickedXContig.name))) {
                 alert(`Error: Contig ${clickedXContig.name} has already been visited.`);
                 return;
             }

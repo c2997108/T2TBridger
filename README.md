@@ -16,7 +16,9 @@ for i in `ls *ctg.gfa`; do awk '/^S/{print ">"$2;print $3}' $i > `basename $i .g
 cat contigs.bp.hap1.p_ctg.fasta contigs.bp.hap2.p_ctg.fasta > hap1-2.fasta
 ```
 
-2. Identify telomere coordinates
+2. (Optional) Identify telomere coordinates  
+   T2TBridger now detects telomere regions directly from the uploaded FASTA file by scanning for repeated occurrences of a user-specified motif (default: `TTAGGG`, reverse complement handled automatically).  
+   If you still need a BED file for other analyses, you can generate it as follows:
 
 ```
 # For telomeres with the repeat motif TTAGGG
@@ -32,7 +34,7 @@ awk -F'\t' '$9>=10000' path-to-portable-pipeline-output/split_query/hap1-2.fa-te
 ```
 
 4. Go to [https://c2997108.github.io/T2TBridger/](https://c2997108.github.io/T2TBridger/),
-   upload `hap1-2.fasta`, `hap1-2.telomere.bed`, and `hap1-2.maf.tsv`, and start T2TBridger.
+   upload `hap1-2.fasta` and `hap1-2.maf.tsv`, optionally adjust the telomere motif and minimum repeat length (defaults are `TTAGGG` and 100 bp), and start T2TBridger. A `.fai` file or telomere `.bed` file is no longer required because the viewer generates the index and telomere annotations in the browser.
 
 ---
 
@@ -45,6 +47,7 @@ awk -F'\t' '$9>=10000' path-to-portable-pipeline-output/split_query/hap1-2.fa-te
    By repeatedly selecting X-axis contigs that appear to extend the Y-axis upwards, if a telomeric sequence appears at the end of an X-axis contig that can further extend the Y-axis, select that contig to complete the construction of one chromosome.
    Then, click "Back to Global" to return to the dot plot of all telomeric contigs, and select a different telomeric contig to continue constructing additional chromosomes.
    Once you have finished constructing as many chromosomes as desired, click "Export Paths" to output the order of the selected contigs.
+   If you need to revisit a previously used contig, toggle the “Allow Repeat Selection” button; contigs that have already appeared will stay shaded in grey for reference.
 
 2. Use the following commands to create an extended FASTA file.
    You will need to have samtools and seqkit installed.
@@ -118,4 +121,3 @@ awk -F'\t' '
  }
  ' <(cat hap1-2.fa|awk '$0~"^>"{print $1} $0!~"^>"{print $0}'| seqkit fx2tab) hap1-2.path > hap1-2.extended.fa
 ```
-

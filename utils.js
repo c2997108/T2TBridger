@@ -17,8 +17,238 @@ export function parseFai(faiText) {
             offset: +offset,
             lineBases: +lineBases,
             lineWidth: +lineWidth,
+            gaps: []
         });
     }
+    return faiMap;
+}
+
+/**
+ * Builds FAI-equivalent index information by scanning a FASTA file stream.
+ * This avoids requiring a pre-generated .fai file.
+ * @param {File} fastaFile - The FASTA file object.
+ * @returns {Promise<Map<string, object>>} - A map from contig name to index info.
+ */
+export async function buildFaiFromFasta(fastaFile, options = {}) {
+    const reader = fastaFile.stream().getReader();
+    const decoder = new TextDecoder('utf-8');
+
+    const telomereMotifRaw = (options.telomereMotif || 'TTAGGG').toUpperCase();
+    const telomereMinLength = Math.max(1, options.telomereMinLength || 100);
+    const telomereMotifLength = telomereMotifRaw.length;
+    const telomereComplement = telomereMotifLength > 0 ? reverseComplement(telomereMotifRaw) : '';
+    const telomereMotifs = [];
+    if (telomereMotifLength > 0) {
+        telomereMotifs.push({ strand: '+', motif: telomereMotifRaw });
+        if (telomereComplement && telomereComplement !== telomereMotifRaw) {
+            telomereMotifs.push({ strand: '-', motif: telomereComplement });
+        }
+    }
+
+    const faiMap = new Map();
+    let buffer = new Uint8Array(0);
+    let fileOffset = 0; // Number of bytes already consumed from the file stream
+
+    let currentContig = null;
+
+    const finalizeTelomereState = (state, endIndexExclusive, telomereArray) => {
+        if (!state || state.runStart === null) {
+            if (state) state.matchIndex = 0;
+            return;
+        }
+        const length = endIndexExclusive - state.runStart;
+        if (length >= telomereMinLength) {
+            telomereArray.push({
+                start: state.runStart,
+                end: endIndexExclusive,
+                strand: state.strand
+            });
+        }
+        state.runStart = null;
+        state.matchIndex = 0;
+    };
+
+    const advanceTelomereState = (state, baseUpper, globalIndex, telomereArray) => {
+        if (!state || state.motifLength === 0) return;
+        const expectedChar = state.motif[state.matchIndex];
+        if (baseUpper === expectedChar) {
+            if (state.runStart === null) {
+                state.runStart = globalIndex;
+            }
+            state.matchIndex++;
+            if (state.matchIndex === state.motifLength) {
+                state.matchIndex = 0;
+            }
+        } else {
+            finalizeTelomereState(state, globalIndex, telomereArray);
+            if (baseUpper === state.motif[0]) {
+                state.runStart = globalIndex;
+                state.matchIndex = state.motifLength === 1 ? 0 : 1;
+            } else {
+                state.runStart = null;
+                state.matchIndex = 0;
+            }
+        }
+    };
+
+    const finalizeContig = () => {
+        if (!currentContig) return;
+        if (currentContig.ongoingGapStart !== null) {
+            currentContig.gaps.push({
+                start: currentContig.ongoingGapStart,
+                end: currentContig.length
+            });
+        }
+        if (currentContig.telomereStates && currentContig.telomeres) {
+            for (const state of currentContig.telomereStates) {
+                finalizeTelomereState(state, currentContig.length, currentContig.telomeres);
+            }
+        }
+        const {
+            name,
+            length,
+            offset,
+            lineBases,
+            lineWidth,
+            gaps,
+            telomeres
+        } = currentContig;
+        if (!name) return;
+        faiMap.set(name, {
+            name,
+            length,
+            offset: offset ?? 0,
+            lineBases: lineBases ?? length,
+            lineWidth: lineWidth ?? (lineBases ?? length),
+            gaps,
+            telomeres: telomeres || []
+        });
+        currentContig = null;
+    };
+
+    const concatUint8 = (a, b) => {
+        if (!a.length) return b;
+        if (!b.length) return a;
+        const merged = new Uint8Array(a.length + b.length);
+        merged.set(a, 0);
+        merged.set(b, a.length);
+        return merged;
+    };
+
+    const processLine = (lineBytes, lineStartOffset, newlineLength) => {
+        if (!lineBytes.length && currentContig === null) return;
+
+        const lineText = decoder.decode(lineBytes);
+        if (lineText.startsWith('>')) {
+            finalizeContig();
+            const rawName = lineText.slice(1).trim();
+            const name = rawName.split(/\s+/)[0] || rawName;
+            currentContig = {
+                name,
+                length: 0,
+                offset: null,
+                lineBases: null,
+                lineWidth: null,
+                gaps: [],
+                ongoingGapStart: null,
+                telomeres: [],
+                telomereStates: telomereMotifs.map(m => ({
+                    strand: m.strand,
+                    motif: m.motif,
+                    motifLength: m.motif.length,
+                    matchIndex: 0,
+                    runStart: null
+                }))
+            };
+            return;
+        }
+
+        if (!currentContig) {
+            // Skip unexpected sequence lines before any header
+            return;
+        }
+
+        if (currentContig.offset === null) {
+            currentContig.offset = lineStartOffset;
+        }
+
+        const basesInLine = lineText.length;
+        if (basesInLine === 0) return;
+
+        const lineUpper = lineText.toUpperCase();
+        for (let i = 0; i < lineText.length; i++) {
+            const base = lineText[i];
+            const isGapBase = base === 'N' || base === 'n';
+            const globalIndex = currentContig.length + i;
+            const baseUpper = lineUpper[i];
+            if (isGapBase) {
+                if (currentContig.ongoingGapStart === null) {
+                    currentContig.ongoingGapStart = globalIndex;
+                }
+            } else if (currentContig.ongoingGapStart !== null) {
+                currentContig.gaps.push({
+                    start: currentContig.ongoingGapStart,
+                    end: globalIndex
+                });
+                currentContig.ongoingGapStart = null;
+            }
+            if (currentContig.telomereStates && currentContig.telomeres) {
+                for (const state of currentContig.telomereStates) {
+                    advanceTelomereState(state, baseUpper, globalIndex, currentContig.telomeres);
+                }
+            }
+        }
+
+        currentContig.length += basesInLine;
+
+        if (currentContig.lineBases === null) {
+            currentContig.lineBases = basesInLine;
+            currentContig.lineWidth = basesInLine + newlineLength;
+        }
+    };
+
+    const consumeBuffer = (isEOF = false) => {
+        let start = 0;
+        for (let i = 0; i < buffer.length; i++) {
+            if (buffer[i] === 0x0A) { // Line Feed
+                let lineBytes = buffer.subarray(start, i);
+                let newlineLen = 1;
+                if (lineBytes.length && lineBytes[lineBytes.length - 1] === 0x0D) {
+                    lineBytes = lineBytes.subarray(0, lineBytes.length - 1);
+                    newlineLen = 2;
+                }
+                const lineStartOffset = fileOffset + start;
+                processLine(lineBytes, lineStartOffset, newlineLen);
+                start = i + 1;
+            }
+        }
+
+        if (start > 0) {
+            fileOffset += start;
+            buffer = buffer.subarray(start);
+        }
+
+        if (isEOF && buffer.length) {
+            const lineStartOffset = fileOffset;
+            processLine(buffer, lineStartOffset, 0);
+            fileOffset += buffer.length;
+            buffer = new Uint8Array(0);
+        }
+    };
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+            consumeBuffer(true);
+            break;
+        }
+        if (value && value.length) {
+            buffer = concatUint8(buffer, value);
+            consumeBuffer(false);
+        }
+    }
+
+    finalizeContig();
     return faiMap;
 }
 

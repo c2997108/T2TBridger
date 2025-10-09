@@ -6,6 +6,8 @@ export const tooltip = document.getElementById('tooltip');
 // --- Constants ---
 export const TELOMERE_DEBUG_X_POS = -1000;
 export const TELOMERE_DEBUG_Y_POS = -1000;
+export const GAP_DEBUG_X_POS = TELOMERE_DEBUG_X_POS - 500;
+export const GAP_DEBUG_Y_POS = TELOMERE_DEBUG_Y_POS - 500;
 
 // --- Application State ---
 export let allData = null;
@@ -18,6 +20,7 @@ export let fastaFile = null;
 export let faiMap = null;
 export let hoveredSegment = null;
 export let lastMousePosition = { x: 0, y: 0 };
+export let allowRepeatSelection = false;
 
 // --- State Modifiers ---
 export function setAllData(data) { allData = data; }
@@ -34,3 +37,4 @@ export function setFastaFile(file) { fastaFile = file; }
 export function setFaiMap(map) { faiMap = map; }
 export function setHoveredSegment(segment) { hoveredSegment = segment; }
 export function setMousePosition(x, y) { lastMousePosition = { x, y }; }
+export function setAllowRepeatSelection(value) { allowRepeatSelection = value; }

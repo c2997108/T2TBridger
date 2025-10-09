@@ -11,8 +11,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const loadButton = document.getElementById('load-data-button');
     const mafFileInput = document.getElementById('maf-file');
     const fastaFileInput = document.getElementById('fasta-file');
-    const faiFileInput = document.getElementById('fai-file');
-    const bedFileInput = document.getElementById('bed-file');
+    const telomereMotifInput = document.getElementById('telomere-motif');
+    const telomereMinLengthInput = document.getElementById('telomere-min-length');
+    const toggleRepeatButton = document.getElementById('toggle-repeat-button');
     const closeSequenceViewerButton = document.getElementById('close-sequence-viewer');
     const toggleHelpButton = document.getElementById('toggle-help-button');
     const helpBox = document.getElementById('keyboard-help');
@@ -50,6 +51,26 @@ document.addEventListener('DOMContentLoaded', function() {
         ]
     };
 
+    const missingFilesMessage = isJa
+        ? 'MAFファイルとFASTAファイルを選択してください。'
+        : 'Please select both MAF and FASTA files.';
+    const invalidMotifMessage = isJa
+        ? 'テロメアモチーフにはA/C/G/T/Nのみを使用してください。'
+        : 'Telomere motif must contain only A, C, G, T, or N.';
+    const invalidLengthMessage = isJa
+        ? 'テロメア最小長は1以上の整数を指定してください。'
+        : 'Minimum telomere length must be a positive integer.';
+
+    const updateRepeatButtonLabel = () => {
+        if (!toggleRepeatButton) return;
+        const isOn = config.allowRepeatSelection;
+        if (isJa) {
+            toggleRepeatButton.textContent = `同一コンティグ再選択を許可: ${isOn ? 'ON' : 'OFF'}`;
+        } else {
+            toggleRepeatButton.textContent = `Allow Repeat Selection: ${isOn ? 'ON' : 'OFF'}`;
+        }
+    };
+
     if (toggleHelpButton && helpBox) {
         toggleHelpButton.textContent = helpTexts.helpLabel;
         const listItems = helpTexts.items
@@ -70,58 +91,79 @@ document.addEventListener('DOMContentLoaded', function() {
     loadButton.addEventListener('click', () => {
         const mafFile = mafFileInput.files[0];
         const fastaFile = fastaFileInput.files[0];
-        const faiFile = faiFileInput.files[0];
-        const bedFile = bedFileInput.files[0];
+        const motifRaw = (telomereMotifInput.value || 'TTAGGG').trim();
+        const motif = motifRaw.toUpperCase();
+        const minLengthInput = parseInt(telomereMinLengthInput.value, 10);
+        const telomereMinLength = Number.isFinite(minLengthInput) ? minLengthInput : 100;
 
-        if (!mafFile || !fastaFile || !faiFile || !bedFile) {
-            alert('Please select all four input files.');
+        if (!mafFile || !fastaFile) {
+            alert(missingFilesMessage);
             return;
         }
+
+        if (!motif || !/^[ACGTN]+$/i.test(motif)) {
+            alert(invalidMotifMessage);
+            return;
+        }
+
+        if (telomereMinLength <= 0) {
+            alert(invalidLengthMessage);
+            return;
+        }
+
+        config.setAllowRepeatSelection(false);
+        updateRepeatButtonLabel();
 
         document.getElementById('file-selection-container').style.display = 'none';
         document.getElementById('main-content').style.display = 'block';
 
-        initialize(mafFile, fastaFile, faiFile, bedFile).catch(console.error);
+        initialize(mafFile, fastaFile, motif, telomereMinLength).catch(console.error);
     });
+
+    if (toggleRepeatButton) {
+        updateRepeatButtonLabel();
+        toggleRepeatButton.addEventListener('click', () => {
+            config.setAllowRepeatSelection(!config.allowRepeatSelection);
+            updateRepeatButtonLabel();
+        });
+    }
 
     closeSequenceViewerButton.addEventListener('click', () => {
         document.getElementById('sequence-viewer').style.display = 'none';
     });
 });
 
-async function initialize(mafFile, fastaFile, faiFile, bedFile) {
+async function initialize(mafFile, fastaFile, telomereMotif, telomereMinLength) {
     config.setFastaFile(fastaFile);
     
-    const [faiText, bedFileText] = await Promise.all([
-        faiFile.text(),
-        bedFile.text()
-    ]);
+    const faiMap = await utils.buildFaiFromFasta(fastaFile, {
+        telomereMotif,
+        telomereMinLength
+    });
 
-    const faiMap = utils.parseFai(faiText);
     config.setFaiMap(faiMap);
 
     const contigs = {};
     for (const [name, info] of faiMap.entries()) {
-        contigs[name] = { length: info.length };
+        contigs[name] = {
+            length: info.length,
+            gaps: info.gaps ? info.gaps.slice() : [],
+            telomeres: info.telomeres ? info.telomeres.slice() : []
+        };
     }
     const contigData = { contigs };
     
     config.setAllContigInfo(contigData);
     config.setAllData(await utils.parseMafStream(mafFile, config.allContigInfo.contigs));
     
-    const tempContigs = Object.entries(config.allContigInfo.contigs).map(([name, info]) => ({ name, ...info, hasTelomere: false, telomeres: [] }));
+    const tempContigs = Object.entries(config.allContigInfo.contigs).map(([name, info]) => ({
+        name,
+        ...info,
+        gaps: info.gaps ? info.gaps.slice() : [],
+        telomeres: info.telomeres ? info.telomeres.map(t => ({ ...t })) : [],
+        hasTelomere: info.telomeres && info.telomeres.length > 0
+    }));
     const contigMap = new Map(tempContigs.map(c => [c.name, c]));
-
-    bedFileText.split('\n').forEach(line => {
-        const parts = line.split('\t');
-        if (parts.length >= 6 && (+parts[2] - +parts[1]) >= 100) {
-            const contig = contigMap.get(parts[0]);
-            if (contig) {
-                contig.hasTelomere = true;
-                contig.telomeres.push({ start: +parts[1], end: +parts[2], strand: parts[5] });
-            }
-        }
-    });
     config.setFullContigArray(Array.from(contigMap.values()));
     
     config.clearViewStack();

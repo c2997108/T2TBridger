@@ -52,12 +52,12 @@
             <input type="file" id="fasta-file" accept=".fa,.fasta">
         </div>
         <div class="file-input-group">
-            <label for="fai-file">FASTA Index (.fai):</label>
-            <input type="file" id="fai-file" accept=".fai">
+            <label for="telomere-motif">Telomere Motif:</label>
+            <input type="text" id="telomere-motif" value="TTAGGG" pattern="[ACGTNacgtn]+" placeholder="e.g., TTAGGG">
         </div>
         <div class="file-input-group">
-            <label for="bed-file">Telomere BED File:</label>
-            <input type="file" id="bed-file" accept=".bed">
+            <label for="telomere-min-length">Minimum Telomere Length (bp):</label>
+            <input type="number" id="telomere-min-length" value="100" min="1" step="1">
         </div>
         <button id="load-data-button" class="action-button">Load Data</button>
     </div>
@@ -79,6 +79,9 @@
         <div id="path-controls" style="display: none;">
             <select id="path-history-dropdown" style="margin-left: 10px;"></select>
             <button id="resume-path-button" class="action-button">Resume Selected Path</button>
+        </div>
+        <div id="repeat-selection-controls" style="margin: 10px 5%;">
+            <button id="toggle-repeat-button" class="action-button">Allow Repeat Selection: OFF</button>
         </div>
 
         <div id="main-view-container">
