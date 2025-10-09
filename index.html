@@ -79,9 +79,13 @@
         <div id="path-controls" style="display: none;">
             <select id="path-history-dropdown" style="margin-left: 10px;"></select>
             <button id="resume-path-button" class="action-button">Resume Selected Path</button>
+            <input type="text" id="contig-jump-input" list="contig-jump-options" placeholder="Jump to contig" style="margin-left: 20px; padding: 6px 8px;">
+            <datalist id="contig-jump-options"></datalist>
+            <button id="contig-jump-button" class="action-button">Go</button>
         </div>
         <div id="repeat-selection-controls" style="margin: 10px 5%;">
             <button id="toggle-repeat-button" class="action-button">Allow Repeat Selection: OFF</button>
+            <button id="reverse-path-button" class="action-button" style="display:none;">Reverse Current Path</button>
         </div>
 
         <div id="main-view-container">

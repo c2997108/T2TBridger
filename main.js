@@ -2,6 +2,10 @@ import * as config from './config.js';
 import * as utils from './utils.js';
 import { renderGlobalPlot, renderDetailPlot, setRenderViewCallback } from './plot.js';
 
+let contigJumpInputElem = null;
+let contigJumpButtonElem = null;
+let contigJumpDatalistElem = null;
+
 // --- Main Application Logic ---
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -14,6 +18,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const telomereMotifInput = document.getElementById('telomere-motif');
     const telomereMinLengthInput = document.getElementById('telomere-min-length');
     const toggleRepeatButton = document.getElementById('toggle-repeat-button');
+    const reversePathButton = document.getElementById('reverse-path-button');
+    contigJumpInputElem = document.getElementById('contig-jump-input');
+    contigJumpButtonElem = document.getElementById('contig-jump-button');
+    contigJumpDatalistElem = document.getElementById('contig-jump-options');
     const closeSequenceViewerButton = document.getElementById('close-sequence-viewer');
     const toggleHelpButton = document.getElementById('toggle-help-button');
     const helpBox = document.getElementById('keyboard-help');
@@ -57,18 +65,31 @@ document.addEventListener('DOMContentLoaded', function() {
     const invalidMotifMessage = isJa
         ? 'テロメアモチーフにはA/C/G/T/Nのみを使用してください。'
         : 'Telomere motif must contain only A, C, G, T, or N.';
-    const invalidLengthMessage = isJa
-        ? 'テロメア最小長は1以上の整数を指定してください。'
-        : 'Minimum telomere length must be a positive integer.';
+   const invalidLengthMessage = isJa
+       ? 'テロメア最小長は1以上の整数を指定してください。'
+       : 'Minimum telomere length must be a positive integer.';
+   const jumpEmptyMessage = isJa
+       ? '移動するコンティグ名を入力してください。'
+       : 'Please enter a contig name to jump to.';
+   const jumpNotFoundMessage = isJa
+       ? '指定したコンティグは見つかりません。'
+       : 'Specified contig was not found.';
+    const reversePathNotAllowedMessage = isJa
+        ? 'パスが存在する状態でのみ反転できます。'
+        : 'You can only reverse when a path is active.';
 
-    const updateRepeatButtonLabel = () => {
-        if (!toggleRepeatButton) return;
-        const isOn = config.allowRepeatSelection;
-        if (isJa) {
-            toggleRepeatButton.textContent = `同一コンティグ再選択を許可: ${isOn ? 'ON' : 'OFF'}`;
-        } else {
-            toggleRepeatButton.textContent = `Allow Repeat Selection: ${isOn ? 'ON' : 'OFF'}`;
-        }
+   const updateRepeatButtonLabel = () => {
+       if (!toggleRepeatButton) return;
+       const isOn = config.allowRepeatSelection;
+       if (isJa) {
+           toggleRepeatButton.textContent = `同一コンティグ再選択を許可: ${isOn ? 'ON' : 'OFF'}`;
+       } else {
+           toggleRepeatButton.textContent = `Allow Repeat Selection: ${isOn ? 'ON' : 'OFF'}`;
+       }
+   };
+    const updateReverseButtonLabel = () => {
+        if (!reversePathButton) return;
+        reversePathButton.textContent = isJa ? '現在のパスを反転' : 'Reverse Current Path';
     };
 
     if (toggleHelpButton && helpBox) {
@@ -88,7 +109,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    loadButton.addEventListener('click', () => {
+   loadButton.addEventListener('click', () => {
         const mafFile = mafFileInput.files[0];
         const fastaFile = fastaFileInput.files[0];
         const motifRaw = (telomereMotifInput.value || 'TTAGGG').trim();
@@ -111,8 +132,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        config.setAllowRepeatSelection(false);
-        updateRepeatButtonLabel();
+       config.setAllowRepeatSelection(false);
+       updateRepeatButtonLabel();
+        updateReverseButtonLabel();
 
         document.getElementById('file-selection-container').style.display = 'none';
         document.getElementById('main-content').style.display = 'block';
@@ -120,11 +142,43 @@ document.addEventListener('DOMContentLoaded', function() {
         initialize(mafFile, fastaFile, motif, telomereMinLength).catch(console.error);
     });
 
-    if (toggleRepeatButton) {
-        updateRepeatButtonLabel();
-        toggleRepeatButton.addEventListener('click', () => {
-            config.setAllowRepeatSelection(!config.allowRepeatSelection);
-            updateRepeatButtonLabel();
+   if (toggleRepeatButton) {
+       updateRepeatButtonLabel();
+       toggleRepeatButton.addEventListener('click', () => {
+           config.setAllowRepeatSelection(!config.allowRepeatSelection);
+           updateRepeatButtonLabel();
+       });
+   }
+    if (reversePathButton) {
+        updateReverseButtonLabel();
+        reversePathButton.addEventListener('click', () => {
+            if (config.viewStack.length <= 1) {
+                alert(reversePathNotAllowedMessage);
+                return;
+            }
+            reverseCurrentPath();
+        });
+    }
+
+    const handleContigJump = () => {
+        if (!contigJumpInputElem) return;
+        const targetName = (contigJumpInputElem.value || '').trim();
+        if (!targetName) {
+            alert(jumpEmptyMessage);
+            return;
+        }
+        jumpToContigByName(targetName, { alertNotFoundMessage: jumpNotFoundMessage });
+    };
+
+    if (contigJumpButtonElem) {
+        contigJumpButtonElem.addEventListener('click', handleContigJump);
+    }
+    if (contigJumpInputElem) {
+        contigJumpInputElem.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                handleContigJump();
+            }
         });
     }
 
@@ -165,6 +219,7 @@ async function initialize(mafFile, fastaFile, telomereMotif, telomereMinLength) 
     }));
     const contigMap = new Map(tempContigs.map(c => [c.name, c]));
     config.setFullContigArray(Array.from(contigMap.values()));
+    populateContigJumpOptions();
     
     config.clearViewStack();
     await renderView();
@@ -172,6 +227,10 @@ async function initialize(mafFile, fastaFile, telomereMotif, telomereMinLength) 
 
 export async function renderView() {
     const currentView = config.viewStack[config.viewStack.length - 1];
+    const reversePathButton = document.getElementById('reverse-path-button');
+    if (reversePathButton) {
+        reversePathButton.style.display = config.viewStack.length > 1 ? 'inline-block' : 'none';
+    }
     if (currentView === 'global') {
         await renderGlobalPlot();
     } else {
@@ -218,7 +277,136 @@ function updatePathHistoryDropdown() {
     });
 
     const hasHistory = config.pathHistory.length > 0;
-    document.getElementById('path-controls').style.display = hasHistory ? 'block' : 'none';
+    const pathControls = document.getElementById('path-controls');
+    if (pathControls) {
+        pathControls.style.display = 'block';
+    }
+    const resumeButton = document.getElementById('resume-path-button');
+    if (resumeButton) {
+        resumeButton.disabled = !hasHistory;
+    }
+}
+
+function populateContigJumpOptions() {
+    if (!contigJumpDatalistElem) return;
+    contigJumpDatalistElem.innerHTML = '';
+    if (!config.fullContigArray) return;
+    const seen = new Set();
+    for (const contig of config.fullContigArray) {
+        if (seen.has(contig.name)) continue;
+        seen.add(contig.name);
+        const option = document.createElement('option');
+        option.value = contig.name;
+        contigJumpDatalistElem.appendChild(option);
+    }
+}
+
+function jumpToContigByName(contigName, { alertNotFoundMessage } = {}) {
+    if (!contigName) return;
+    const contig = config.fullContigArray?.find(c => c.name === contigName);
+    if (!contig) {
+        if (alertNotFoundMessage) alert(alertNotFoundMessage);
+        return;
+    }
+
+    const visitedInPaths = new Set(config.pathHistory.flatMap(p => p.map(item => item.contigName)));
+    const currentlyVisited = new Set(config.viewStack.slice(1).map(item => item.contigName));
+    if (!config.allowRepeatSelection && (visitedInPaths.has(contig.name) || currentlyVisited.has(contig.name))) {
+        alert(`Error: Contig ${contig.name} has already been visited.`);
+        return;
+    }
+
+    let hasLowerTelomere = false;
+    const lowerTelomereThreshold = contig.length / 2;
+    if (contig.telomeres && contig.telomeres.length > 0) {
+        for (const telomere of contig.telomeres) {
+            if (telomere.start < lowerTelomereThreshold) {
+                hasLowerTelomere = true;
+                break;
+            }
+        }
+    }
+    config.setYAxisReversed(!hasLowerTelomere);
+
+    const dummyAlignment = {
+        source: { name: contig.name, start: 0, end: 1, isReversed: false },
+        target: { name: contig.name, start: 0, end: 1, strand: '+' }
+    };
+
+    config.clearViewStack();
+    config.pushToViewStack({
+        contigName: contig.name,
+        entryAlignment: dummyAlignment,
+        isReversed: config.yAxisReversed
+    });
+    renderView();
+}
+
+function invertEntryAlignment(alignment) {
+    if (!alignment) return null;
+    const newSourceIsReversed = alignment.target?.strand === '-' ? true : false;
+    const newTargetStrand = alignment.source?.isReversed ? '-' : '+';
+    return {
+        source: {
+            name: alignment.target?.name ?? '',
+            start: alignment.target?.start ?? 0,
+            end: alignment.target?.end ?? 0,
+            isReversed: newSourceIsReversed
+        },
+        target: {
+            name: alignment.source?.name ?? '',
+            start: alignment.source?.start ?? 0,
+            end: alignment.source?.end ?? 0,
+            strand: newTargetStrand
+        }
+    };
+}
+
+function reverseCurrentPath() {
+    if (config.viewStack.length <= 1) return;
+    const currentPath = config.viewStack.slice(1);
+    const reversedPath = [];
+    for (let newIdx = 0; newIdx < currentPath.length; newIdx++) {
+        const originalIdx = currentPath.length - 1 - newIdx;
+        const originalStep = currentPath[originalIdx];
+        const newIsReversed = !originalStep.isReversed;
+        let newEntryAlignment = null;
+        if (newIdx === 0) {
+            const contigInfo = config.allContigInfo?.contigs?.[originalStep.contigName];
+            const contigLength = contigInfo?.length ?? 0;
+            newEntryAlignment = {
+                source: {
+                    name: originalStep.contigName,
+                    start: 0,
+                    end: contigLength,
+                    isReversed: newIsReversed
+                },
+                target: {
+                    name: originalStep.contigName,
+                    start: 0,
+                    end: contigLength,
+                    strand: newIsReversed ? '-' : '+'
+                }
+            };
+        } else {
+            const nextOriginalIdx = originalIdx + 1;
+            const alignmentToInvert = currentPath[nextOriginalIdx]?.entryAlignment;
+            newEntryAlignment = invertEntryAlignment(alignmentToInvert);
+        }
+        reversedPath.push({
+            contigName: originalStep.contigName,
+            entryAlignment: newEntryAlignment,
+            isReversed: newIsReversed
+        });
+    }
+
+    config.clearViewStack();
+    reversedPath.forEach(view => config.pushToViewStack(view));
+    const lastView = reversedPath[reversedPath.length - 1];
+    if (lastView) {
+        config.setYAxisReversed(lastView.isReversed);
+    }
+    renderView();
 }
 
 

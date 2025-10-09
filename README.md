@@ -48,6 +48,7 @@ awk -F'\t' '$9>=10000' path-to-portable-pipeline-output/split_query/hap1-2.fa-te
    Then, click "Back to Global" to return to the dot plot of all telomeric contigs, and select a different telomeric contig to continue constructing additional chromosomes.
    Once you have finished constructing as many chromosomes as desired, click "Export Paths" to output the order of the selected contigs.
    If you need to revisit a previously used contig, toggle the “Allow Repeat Selection” button; contigs that have already appeared will stay shaded in grey for reference.
+   You can also jump directly to any contig using the input next to the resume button—type or pick a name to open that contig’s detail view immediately.
 
 2. Use the following commands to create an extended FASTA file.
    You will need to have samtools and seqkit installed.
