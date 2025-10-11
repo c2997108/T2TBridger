@@ -14,7 +14,7 @@ cat contigs.bp.hap1.p_ctg.fasta contigs.bp.hap2.p_ctg.fasta > hap1-2.fasta
 ```
 
 2. コンティグ間の相同性領域の探索
-[Portable Pipeline](https://github.com/c2997108/OpenPortablePipeline)の`post-assemble~dotplot-by-last`にて、X, Yともにhap1-2.fastaを指定して実行し、hap1-2.fasta内のすべてのコンティグ間の相同性を検索し、下記のコマンドで出力を削っておく。減らしておかないとブラウザがこの後のステップで固まってしまう。
+[Portable Pipeline](https://github.com/c2997108/OpenPortablePipeline)の`post-assemble~dotplot-by-last`にて、X, Yともにhap1-2.fastaを指定して実行し、hap1-2.fasta内のすべてのコンティグ間の相同性を検索し、下記のコマンドで出力を削っておく。減らしておかないとブラウザがこの後のステップで固まってしまう。下記は10Kbp以上のアライメントが取れた場合に限定する例なので、もっと感度を上げたい場合は10000を5000などに変更すること。
 ```
 awk -F'\t' '$9>=10000' path-to-portable-pipeline-output/split_query/hap1-2.fa-temp-hap1-2.fa.maf.all.tsv|cut -f 1-11 > hap1-2.maf.tsv
 ```
