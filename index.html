@@ -98,17 +98,26 @@
             <button id="back-button" class="action-button">&larr; Back</button>
             <button id="back-to-global-button" class="action-button">Back to Global</button>
             <button id="export-paths-button-detail" class="action-button export-paths-btn">Export Paths</button>
-            <button id="import-paths-button-detail" class="action-button import-paths-btn">Import Paths</button>
-            <h1 id="detail-title"></h1>
-            <div id="detail-plot" class="plot-container"></div>
-        </div>
-        <!-- Hidden file input for importing exported paths -->
-        <input type="file" id="import-paths-input" accept=".txt,.json" style="display:none;" />
+        <button id="import-paths-button-detail" class="action-button import-paths-btn">Import Paths</button>
+        <h1 id="detail-title"></h1>
+        <div id="detail-plot" class="plot-container"></div>
     </div>
+    <!-- Hidden file input for importing exported paths -->
+    <input type="file" id="import-paths-input" accept=".txt,.json" style="display:none;" />
+    <div id="loading-overlay" style="display:none; position:fixed; inset:0; background:rgba(255,255,255,0.85); z-index:200; align-items:center; justify-content:center;">
+        <div style="width: min(360px, 80%); text-align:center; background:#fff; border:1px solid #ccc; border-radius:8px; padding:18px 22px; box-shadow:0 8px 20px rgba(0,0,0,0.12);">
+            <div id="loading-message" style="font-weight:bold; margin-bottom:12px;">Processing FASTA...</div>
+            <div style="width:100%; height:14px; background:#e6e6e6; border-radius:7px; overflow:hidden;">
+                <div id="loading-progress-bar" style="height:100%; width:0%; background:#4285f4;"></div>
+            </div>
+            <div id="loading-progress-text" style="margin-top:10px; font-size:0.9em; color:#333;">0%</div>
+        </div>
+    </div>
+</div>
 
-    <div id="tooltip"></div>
-    <div id="sequence-viewer" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 25%; background-color: #f8f9fa; border-top: 2px solid #dee2e6; overflow: auto; z-index: 101;">
-        <button id="close-sequence-viewer" style="position: absolute; top: 5px; right: 10px; cursor: pointer;">Close</button>
+<div id="tooltip"></div>
+<div id="sequence-viewer" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 25%; background-color: #f8f9fa; border-top: 2px solid #dee2e6; overflow: auto; z-index: 101;">
+    <button id="close-sequence-viewer" style="position: absolute; top: 5px; right: 10px; cursor: pointer;">Close</button>
         <div id="sequence-output" style="padding: 15px; font-family: monospace; white-space: pre-wrap;"></div>
     </div>
     <script type="module" src="main.js" defer></script>

@@ -33,6 +33,26 @@ export async function buildFaiFromFasta(fastaFile, options = {}) {
     const reader = fastaFile.stream().getReader();
     const decoder = new TextDecoder('utf-8');
 
+    const now = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+    const waitForNextFrame = () => new Promise(resolve => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => resolve());
+        } else {
+            setTimeout(resolve, 16);
+        }
+    });
+    let lastYieldTs = now();
+    const maybeYieldToBrowser = async (force = false) => {
+        if (!force) {
+            const elapsed = now() - lastYieldTs;
+            if (elapsed < 32) return;
+        }
+        await waitForNextFrame();
+        lastYieldTs = now();
+    };
+
     const telomereMotifRaw = (options.telomereMotif || 'TTAGGG').toUpperCase();
     const telomereMinLength = Math.max(1, options.telomereMinLength || 100);
     const telomereMotifLength = telomereMotifRaw.length;
@@ -48,6 +68,17 @@ export async function buildFaiFromFasta(fastaFile, options = {}) {
     const faiMap = new Map();
     let buffer = new Uint8Array(0);
     let fileOffset = 0; // Number of bytes already consumed from the file stream
+
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const totalSize = typeof fastaFile.size === 'number' ? fastaFile.size : null;
+    const reportProgress = () => {
+        if (!onProgress) return;
+        try {
+            const processed = totalSize != null ? Math.min(fileOffset, totalSize) : fileOffset;
+            onProgress(processed, totalSize);
+        } catch (_) { /* ignore user progress errors */ }
+    };
+    reportProgress();
 
     let currentContig = null;
 
@@ -234,21 +265,27 @@ export async function buildFaiFromFasta(fastaFile, options = {}) {
             fileOffset += buffer.length;
             buffer = new Uint8Array(0);
         }
+        reportProgress();
     };
 
     while (true) {
         const { value, done } = await reader.read();
         if (done) {
             consumeBuffer(true);
+            reportProgress();
+            await maybeYieldToBrowser(true);
             break;
         }
         if (value && value.length) {
             buffer = concatUint8(buffer, value);
             consumeBuffer(false);
+            await maybeYieldToBrowser();
         }
     }
 
     finalizeContig();
+    reportProgress();
+    await maybeYieldToBrowser(true);
     return faiMap;
 }
 

@@ -5,6 +5,11 @@ import { renderGlobalPlot, renderDetailPlot, setRenderViewCallback } from './plo
 let contigJumpInputElem = null;
 let contigJumpButtonElem = null;
 let contigJumpDatalistElem = null;
+let isJapaneseLocale = false;
+let loadingOverlayElem = null;
+let loadingMessageElem = null;
+let loadingProgressBarElem = null;
+let loadingProgressTextElem = null;
 
 // --- Main Application Logic ---
 
@@ -22,6 +27,10 @@ document.addEventListener('DOMContentLoaded', function() {
     contigJumpInputElem = document.getElementById('contig-jump-input');
     contigJumpButtonElem = document.getElementById('contig-jump-button');
     contigJumpDatalistElem = document.getElementById('contig-jump-options');
+    loadingOverlayElem = document.getElementById('loading-overlay');
+    loadingMessageElem = document.getElementById('loading-message');
+    loadingProgressBarElem = document.getElementById('loading-progress-bar');
+    loadingProgressTextElem = document.getElementById('loading-progress-text');
     const closeSequenceViewerButton = document.getElementById('close-sequence-viewer');
     const toggleHelpButton = document.getElementById('toggle-help-button');
     const helpBox = document.getElementById('keyboard-help');
@@ -31,6 +40,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const langs = navigator.languages || [navigator.language || ''];
         return langs.some(l => (l || '').toLowerCase().startsWith('ja'));
     })();
+    isJapaneseLocale = isJa;
 
     // Build localized help content
     const helpTexts = isJa ? {
@@ -190,10 +200,46 @@ document.addEventListener('DOMContentLoaded', function() {
 async function initialize(mafFile, fastaFile, telomereMotif, telomereMinLength) {
     config.setFastaFile(fastaFile);
     
-    const faiMap = await utils.buildFaiFromFasta(fastaFile, {
-        telomereMotif,
-        telomereMinLength
-    });
+    const loadingMessage = isJapaneseLocale ? 'FASTA解析中...' : 'Processing FASTA file...';
+    showLoadingOverlay(loadingMessage);
+    let faiMap;
+    try {
+        const totalBytes = typeof fastaFile.size === 'number' ? fastaFile.size : null;
+        let lastPercent = -1;
+        let lastUpdateTs = 0;
+        const onProgress = (processedBytes, total) => {
+            const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            const totalForProgress = typeof total === 'number' && total > 0
+                ? total
+                : (typeof totalBytes === 'number' && totalBytes > 0 ? totalBytes : null);
+            let fraction = null;
+            let percent = null;
+            if (totalForProgress) {
+                fraction = Math.min(processedBytes / totalForProgress, 1);
+                percent = Math.floor(fraction * 100);
+            }
+            const shouldUpdate = processedBytes === total || percent === 100 || percent !== lastPercent || (now - lastUpdateTs) > 200;
+            if (!shouldUpdate) return;
+            lastUpdateTs = now;
+            if (percent !== null) {
+                lastPercent = percent;
+                const text = `${percent}% (${formatBytes(processedBytes)} / ${formatBytes(totalForProgress)})`;
+                updateLoadingOverlayProgress(fraction, text);
+            } else {
+                const text = `${formatBytes(processedBytes)} processed`;
+                updateLoadingOverlayProgress(null, text);
+            }
+        };
+
+        faiMap = await utils.buildFaiFromFasta(fastaFile, {
+            telomereMotif,
+            telomereMinLength,
+            onProgress
+        });
+        updateLoadingOverlayProgress(1, isJapaneseLocale ? '解析完了' : 'Completed');
+    } finally {
+        hideLoadingOverlay();
+    }
 
     config.setFaiMap(faiMap);
 
@@ -407,6 +453,44 @@ function reverseCurrentPath() {
         config.setYAxisReversed(lastView.isReversed);
     }
     renderView();
+}
+
+function showLoadingOverlay(message) {
+    if (!loadingOverlayElem) return;
+    loadingOverlayElem.style.display = 'flex';
+    if (loadingMessageElem) loadingMessageElem.textContent = message;
+    if (loadingProgressBarElem) loadingProgressBarElem.style.width = '0%';
+    if (loadingProgressTextElem) loadingProgressTextElem.textContent = '0%';
+}
+
+function updateLoadingOverlayProgress(fraction, label) {
+    if (!loadingOverlayElem) return;
+    if (typeof fraction === 'number' && isFinite(fraction)) {
+        const percent = Math.min(100, Math.max(0, Math.round(fraction * 100)));
+        if (loadingProgressBarElem) loadingProgressBarElem.style.width = `${percent}%`;
+        if (loadingProgressTextElem) loadingProgressTextElem.textContent = label ?? `${percent}%`;
+    } else {
+        if (loadingProgressBarElem) loadingProgressBarElem.style.width = '100%';
+        if (loadingProgressTextElem) loadingProgressTextElem.textContent = label ?? '';
+    }
+}
+
+function hideLoadingOverlay() {
+    if (!loadingOverlayElem) return;
+    loadingOverlayElem.style.display = 'none';
+}
+
+function formatBytes(bytes) {
+    if (typeof bytes !== 'number' || !isFinite(bytes) || bytes <= 0) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex++;
+    }
+    if (unitIndex === 0) return `${Math.round(value)} ${units[unitIndex]}`;
+    return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
 
