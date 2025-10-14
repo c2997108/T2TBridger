@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
         title: 'キーボード操作',
         note: '注: プロット領域をアクティブにした状態（クリック後）で有効です。',
         items: [
-            ['r', 'Y軸の向きを反転（現在のビューに適用）'],
+            ['r', 'X軸の向きを反転（現在のビューに適用）'],
             ['f', 'ホバー中のアラインメント区間の配列を表示（最大3,000bp、X軸とY軸）'],
             ['↑ / ↓', '表示を上下にパン（5%ずつ）'],
             ['← / →', '表示を左右にパン（5%ずつ）'],
@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', function() {
         title: 'Keyboard Shortcuts',
         note: 'Note: Click the plot area to focus before using shortcuts.',
         items: [
-            ['r', 'Reverse Y-axis orientation (applies to current view)'],
+            ['r', 'Reverse X-axis orientation (applies to current view)'],
             ['f', 'Show sequences for hovered alignment segment (up to 3,000 bp; X & Y)'],
             ['↑ / ↓', 'Pan vertically by 5%'],
             ['← / →', 'Pan horizontally by 5%'],
@@ -757,16 +757,8 @@ document.addEventListener('keydown', async (event) => {
     const key = event.key.toLowerCase();
 
     if (key === 'r') {
-        config.setYAxisReversed(!config.yAxisReversed);
-        
-        if (activePlotDiv === config.detailPlotDiv) {
-            renderView(); 
-        } else {
-            const currentYRange = computedLayout.yaxis.range;
-            const newYRange = [currentYRange[1], currentYRange[0]];
-            Plotly.relayout(activePlotDiv, { 'yaxis.range': newYRange });
-        }
-        
+        config.toggleXAxisFlipOverride();
+        await renderView();
         updateSequenceDisplay();
         return;
     }

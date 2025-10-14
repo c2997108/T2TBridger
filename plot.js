@@ -62,7 +62,7 @@ function createTelomereDebugTracesForX(xContigsInView) {
     const minusTraceData = { x: [], y: [], symbols: [] };
     for (const contig of xContigsInView) {
         if (!contig.telomeres) continue;
-        const effectiveDirectionReversed = contig.isReversed ^ config.yAxisReversed;
+        const effectiveDirectionReversed = contig.isReversed ^ config.isXAxisReversed();
         for (const telomere of contig.telomeres) {
             let x_start_local = telomere.start;
             let x_end_local = telomere.end;
@@ -127,7 +127,7 @@ function createGapTracesForX(xContigsInView) {
     const traceData = { x: [], y: [] };
     for (const contig of xContigsInView) {
         if (!contig.gaps || contig.gaps.length === 0) continue;
-        const effectiveDirectionReversed = (!!contig.isReversed) ^ config.yAxisReversed;
+        const effectiveDirectionReversed = (!!contig.isReversed) ^ config.isXAxisReversed();
         for (const gap of contig.gaps) {
             let gapStartLocal = gap.start ?? 0;
             let gapEndLocal = gap.end ?? gapStartLocal;
@@ -398,7 +398,7 @@ export async function renderDetailPlot(yContigName) {
     const transformedData = filteredData.map(d => {
         const xContigMapInfo = detailXContigsMap.get(d.q_name);
         if (!xContigMapInfo) return null;
-        const effectiveDirectionReversed = xContigMapInfo.isReversed ^ config.yAxisReversed;
+        const effectiveDirectionReversed = xContigMapInfo.isReversed ^ config.isXAxisReversed();
         let x_start_new, x_end_new;
         if (effectiveDirectionReversed) {
             if(d.direction === 'forward'){
@@ -442,7 +442,7 @@ export async function renderDetailPlot(yContigName) {
         // Add thick black line at the end of each contig's region on the X-axis
         detailShapes.push({ type: 'line', x0: contigEnd, x1: contigEnd, y0: 0, y1: yContig.length, line: { color: 'black', width: 2 } });
 
-        const effectiveDirectionReversed = contig.isReversed ^ config.yAxisReversed;
+        const effectiveDirectionReversed = contig.isReversed ^ config.isXAxisReversed();
         const color = effectiveDirectionReversed ? 'red' : 'black';
         const text = contig.name + (effectiveDirectionReversed ? '(-)' : '');
         detailAnnotations.push({

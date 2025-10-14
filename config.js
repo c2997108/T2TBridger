@@ -16,6 +16,7 @@ export let fullContigArray = null;
 export let viewStack = [];
 export let pathHistory = [];
 export let yAxisReversed = false;
+export let xAxisFlipOverride = false;
 export let fastaFile = null;
 export let faiMap = null;
 export let hoveredSegment = null;
@@ -27,6 +28,9 @@ export function setAllData(data) { allData = data; }
 export function setAllContigInfo(info) { allContigInfo = info; }
 export function setFullContigArray(arr) { fullContigArray = arr; }
 export function setYAxisReversed(value) { yAxisReversed = value; }
+export function setXAxisFlipOverride(value) { xAxisFlipOverride = value; }
+export function toggleXAxisFlipOverride() { xAxisFlipOverride = !xAxisFlipOverride; }
+export function isXAxisReversed() { return !!(yAxisReversed ^ xAxisFlipOverride); }
 export function pushToViewStack(item) { viewStack.push(item); }
 export function popFromViewStack() { return viewStack.pop(); }
 export function clearViewStack() { viewStack = ['global']; }
